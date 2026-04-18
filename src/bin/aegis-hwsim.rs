@@ -18,6 +18,7 @@ fn main() -> ExitCode {
         Some("run") => run_scenario(&args[1..]),
         Some("list-scenarios") => run_list_scenarios(&args[1..]),
         Some("coverage-grid") => run_coverage_grid(&args[1..]),
+        Some("doctor") => run_doctor(&args[1..]),
         Some("-h" | "--help" | "help") | None => {
             print_help();
             ExitCode::SUCCESS
@@ -46,6 +47,8 @@ fn print_help() {
     println!("                                      Run a scenario against a persona+stick");
     println!("  aegis-hwsim coverage-grid [--format json|markdown] [--dry-run]");
     println!("                                      Emit persona × scenario grid");
+    println!("  aegis-hwsim doctor [--firmware-root DIR]");
+    println!("                                      Check host has qemu/swtpm/ovmf installed");
     println!("  aegis-hwsim --version               Print version");
     println!("  aegis-hwsim --help                  This message");
     println!();
@@ -275,6 +278,33 @@ fn run_gen_schema(args: &[String]) -> ExitCode {
         }
     } else {
         print!("{rendered}");
+        ExitCode::SUCCESS
+    }
+}
+
+/// `aegis-hwsim doctor` — host environment check. Returns exit 0 on
+/// PASS or WARN, 1 on FAIL. Operators run this before filing a bug
+/// report so they (and we) know the host has every prerequisite.
+fn run_doctor(args: &[String]) -> ExitCode {
+    if matches!(args.first().map(String::as_str), Some("--help" | "-h")) {
+        println!("aegis-hwsim doctor — check host has qemu/swtpm/ovmf installed");
+        println!();
+        println!("USAGE:");
+        println!("  aegis-hwsim doctor [--firmware-root DIR]");
+        println!();
+        println!("  --firmware-root DIR  Override OVMF dir (default: /usr/share/OVMF)");
+        return ExitCode::SUCCESS;
+    }
+    let firmware_root = args
+        .iter()
+        .position(|a| a == "--firmware-root")
+        .and_then(|i| args.get(i + 1))
+        .map_or_else(|| PathBuf::from("/usr/share/OVMF"), PathBuf::from);
+    let report = aegis_hwsim::doctor::run(&firmware_root);
+    print!("{}", report.render());
+    if report.has_failures() {
+        ExitCode::from(1)
+    } else {
         ExitCode::SUCCESS
     }
 }
