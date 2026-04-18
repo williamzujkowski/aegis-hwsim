@@ -10,3 +10,4 @@
 
 pub mod loader;
 pub mod persona;
+pub mod smbios;
