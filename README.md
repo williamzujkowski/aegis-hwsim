@@ -101,18 +101,22 @@ target/release/aegis-hwsim run \
 | 2  | Usage error |
 | 77 | Skip — prerequisites missing (operator-readable reason printed) |
 
-### Persona library (8 entries today)
+### Persona library (10 entries today)
 
 | ID | TPM | OVMF | Notes |
 |----|-----|------|-------|
 | `qemu-generic-minimal` | 2.0 | ms_enrolled | Reference persona |
-| `qemu-smoke-no-tpm` | none | ms_enrolled | Harness self-test only |
+| `qemu-smoke-no-tpm` | none | ms_enrolled | Harness self-test (smoke scenario target) |
+| `qemu-disabled-sb` | none | disabled | Diagnostic — exercises non-secboot CODE path |
+| `qemu-setup-mode-sb` | none | setup_mode | Diagnostic — pre-PK enrollment / MOK recovery flow |
 | `framework-laptop-12gen` | 2.0 | ms_enrolled | Phase 1 |
 | `lenovo-thinkpad-x1-carbon-gen11` | 2.0 | ms_enrolled | Phase 1 |
 | `lenovo-thinkpad-t440p-tpm12` | 1.2 (ST33) | ms_enrolled | Exercises tpm-tis device path |
 | `dell-xps-13-9320` | 2.0 (PTT) | ms_enrolled | Phase 2 |
 | `hp-elitebook-845-g10` | 2.0 (fTPM) | ms_enrolled | Phase 2 |
 | `asus-zenbook-14-oled` | 2.0 (PTT) | ms_enrolled | Phase 2 |
+
+OVMF variant matrix coverage today: **3 of 4** — `ms_enrolled` (8 personas), `disabled` (1), `setup_mode` (1). `custom_pk` is still future work — needs a test keyring under `firmware/` plus a relative-path resolution decision in the loader.
 
 All vendor-docs source citations are flagged PLACEHOLDER pending a real community hardware-report. See `personas/*.yaml` for the per-persona quirks captured (boot-key F8/F9/F12, vendor-specific MOK Manager rendering, AMD fTPM stuttering errata, TPM 1.2 SHA-1-only PCR bank, etc.).
 
