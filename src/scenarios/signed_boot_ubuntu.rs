@@ -37,13 +37,32 @@ const LANDMARK_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// The boot-chain landmarks we wait for, in order. Each one's
 /// observation is necessary for the chain to be considered Pass.
+///
+/// Empirical check (2026-04-18, against a real signed stick on a
+/// Framework Laptop): shim itself is silent on serial unless
+/// `SHIM_VERBOSE=1` is set, so we observe its work via the GRUB hand-
+/// off. The landmarks below are direct quotes from a successful boot
+/// of a v0.11.0 aegis-boot stick:
+///
+/// 1. `BdsDxe: starting Boot0001` — OVMF launched the stick's
+///    `\EFI\BOOT\BOOTX64.EFI` (which is shim).
+/// 2. `GNU GRUB` — shim's signed-chain verification of grub passed;
+///    grub is now running. Distros print this consistently.
+/// 3. `EFI stub: UEFI Secure Boot is enabled` — kernel started, SB
+///    state propagated to the kernel command line. This is the
+///    canonical signed-chain-reached-kernel marker.
+/// 4. `rescue-tui starting` — userspace rescue UI alive, meaning
+///    the initramfs ran to completion.
+///
+/// Reaching landmark 4 means the full signed chain (OVMF → shim →
+/// grub → kernel → initramfs → rescue-tui) completed successfully.
+/// kexec into a target ISO is operator choice, not a chain-validity
+/// signal — we don't assert it here.
 const LANDMARKS: &[&str] = &[
-    "shim",
-    // grub may print as "grub", "GNU GRUB", or `Welcome to GRUB`. We
-    // match the broadest substring to tolerate distro variation.
-    "GRUB",
-    "Linux version",
-    "kexec_core: Starting new kernel",
+    "BdsDxe: starting Boot0001",
+    "GNU GRUB",
+    "EFI stub: UEFI Secure Boot is enabled",
+    "rescue-tui starting",
 ];
 
 /// The first end-to-end scenario. Stateless; all per-run state lives

@@ -91,11 +91,19 @@ pub fn smbios_argv(dmi: &Dmi) -> Result<Vec<String>, SmbiosError> {
         ));
     }
 
-    // type=3 — Chassis (only when chassis_type is set)
-    if let Some(ct) = dmi.chassis_type {
-        argv.push("-smbios".to_string());
-        argv.push(format!("type=3,type={ct}"));
-    }
+    // type=3 — System Enclosure. We DON'T emit one even when
+    // `dmi.chassis_type` is set: QEMU's `-smbios type=3` accepts
+    // manufacturer/version/serial/asset/sku but does NOT expose the
+    // chassis-type code (3=desktop, 10=notebook, etc.) as a
+    // settable field. Emitting `type=3,type={ct}` is parsed by QEMU
+    // as "switch to SMBIOS type {ct}" and rejected for unknown types
+    // (real-world failure: 2026-04-18 against the Framework persona,
+    // QEMU said `Don't know how to build fields for SMBIOS type 10`).
+    //
+    // The persona's chassis_type field is preserved as informational
+    // metadata that future readers can use; we just don't pass it to
+    // QEMU. If/when QEMU exposes the field, switch this back on.
+    let _ = &dmi.chassis_type;
 
     Ok(argv)
 }
@@ -171,11 +179,18 @@ mod tests {
     }
 
     #[test]
-    fn emits_type3_when_chassis_type_set() {
+    fn does_not_emit_type3_even_when_chassis_type_set() {
+        // QEMU's `-smbios type=3` doesn't accept a chassis-type code
+        // field; emitting `type=3,type=N` is parsed as "switch SMBIOS
+        // type to N" and rejected. We deliberately drop it. The
+        // persona's chassis_type stays as informational metadata.
         let mut d = minimal_dmi();
         d.chassis_type = Some(10); // notebook
         let argv = smbios_argv(&d).unwrap();
-        assert!(argv.iter().any(|a| a == "type=3,type=10"));
+        assert!(
+            !argv.iter().any(|a| a.starts_with("type=3")),
+            "must not emit `-smbios type=3`; got {argv:?}"
+        );
     }
 
     #[test]
