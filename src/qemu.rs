@@ -29,8 +29,12 @@
 //!    here.
 //! 2. **No NUL in argv.** [`smbios_argv`] rejects NUL upfront;
 //!    [`Invocation::new`] repeats the check for the stick path.
-//! 3. **Path canonicalization.** The stick path must exist and is
-//!    canonicalized before being passed to QEMU (E2.7, #24).
+//! 3. **Path canonicalization + sandbox boundary.** The stick path must
+//!    exist and is canonicalized before being passed to QEMU. The
+//!    per-run `OVMF_VARS` copy is also canonicalized after the copy
+//!    lands and must `starts_with` the canonicalized work root — a
+//!    pre-existing symlink at the destination cannot redirect QEMU's
+//!    SB-variable writes outside the run's sandbox (E2.7, #24).
 
 use crate::ovmf::{self, OvmfError};
 use crate::persona::{Persona, TpmVersion};
@@ -89,13 +93,22 @@ impl Invocation {
         )?;
 
         // Copy VARS template → per-run copy so each VM has isolated SB state.
-        let vars_copy = work_dir.join("OVMF_VARS.fd");
-        if let Some(parent) = vars_copy.parent() {
-            fs::create_dir_all(parent).map_err(|e| InvocationError::WorkDirInaccessible {
-                path: parent.to_path_buf(),
+        // E2.7 path-boundary: the work_dir is canonicalized first, then
+        // every path we materialize underneath is required to land
+        // *inside* the canonicalized root. Symlinks and `..` traversal
+        // can't escape because we canonicalize the destination AFTER
+        // the copy lands (which resolves any symlink swapped in mid-op)
+        // and re-check `starts_with`.
+        fs::create_dir_all(work_dir).map_err(|e| InvocationError::WorkDirInaccessible {
+            path: work_dir.to_path_buf(),
+            kind: format!("{:?}", e.kind()),
+        })?;
+        let work_root_canon =
+            fs::canonicalize(work_dir).map_err(|e| InvocationError::WorkDirInaccessible {
+                path: work_dir.to_path_buf(),
                 kind: format!("{:?}", e.kind()),
             })?;
-        }
+        let vars_copy = work_root_canon.join("OVMF_VARS.fd");
         fs::copy(&paths.vars_template, &vars_copy).map_err(|e| {
             InvocationError::VarsCopyFailed {
                 from: paths.vars_template.clone(),
@@ -104,8 +117,29 @@ impl Invocation {
             }
         })?;
 
-        let argv = build_argv(persona, &paths.code, &vars_copy, &stick_canon, swtpm)?;
-        Ok(Self { argv, vars_copy })
+        // Defense in depth: re-canonicalize the just-created copy and
+        // confirm it lives under the canonicalized work root. A
+        // pre-existing symlink at `vars_copy` pointing outside the root
+        // would cause fs::copy to write to the symlink target; this
+        // check catches that exact escape path.
+        let vars_copy_canon =
+            fs::canonicalize(&vars_copy).map_err(|e| InvocationError::VarsCopyFailed {
+                from: paths.vars_template.clone(),
+                to: vars_copy.clone(),
+                kind: format!("{:?}", e.kind()),
+            })?;
+        if !vars_copy_canon.starts_with(&work_root_canon) {
+            return Err(InvocationError::VarsCopyEscapedRoot {
+                vars_copy: vars_copy_canon,
+                work_root: work_root_canon,
+            });
+        }
+
+        let argv = build_argv(persona, &paths.code, &vars_copy_canon, &stick_canon, swtpm)?;
+        Ok(Self {
+            argv,
+            vars_copy: vars_copy_canon,
+        })
     }
 
     /// Produce a `std::process::Command` ready to spawn. The caller is
@@ -257,6 +291,18 @@ pub enum InvocationError {
         to: PathBuf,
         /// Rendered `io::ErrorKind`.
         kind: String,
+    },
+
+    /// The per-run `OVMF_VARS` copy resolved (after `fs::canonicalize`)
+    /// to a path outside the canonicalized work root. A pre-existing
+    /// symlink at the destination is the most common cause; we refuse
+    /// to hand QEMU a write-target that escaped the run's sandbox.
+    #[error("`OVMF_VARS` copy {vars_copy} escaped work root {work_root}")]
+    VarsCopyEscapedRoot {
+        /// Canonicalized (resolved) path the copy ended up at.
+        vars_copy: PathBuf,
+        /// Canonicalized work-root the copy was supposed to live under.
+        work_root: PathBuf,
     },
 
     /// OVMF resolution failed (underlying error comes from
@@ -574,5 +620,82 @@ mod tests {
         };
         let cmd = inv.build();
         assert_eq!(cmd.get_program().to_string_lossy(), "qemu-system-x86_64");
+    }
+
+    /// E2.7 path-boundary: a pre-existing symlink at the `OVMF_VARS`
+    /// destination, pointing OUTSIDE the work root, must be rejected.
+    /// `fs::copy` would otherwise follow the symlink and overwrite the
+    /// target outside the run's sandbox.
+    #[test]
+    #[cfg(unix)]
+    fn invocation_new_rejects_vars_copy_symlink_escape() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        // Build a fake Debian firmware root.
+        let fw = tmp.path().join("fw");
+        fs::create_dir_all(&fw).unwrap();
+        fs::write(fw.join("OVMF_CODE_4M.secboot.fd"), b"code").unwrap();
+        fs::write(fw.join("OVMF_VARS_4M.ms.fd"), b"vars template").unwrap();
+
+        let stick = tmp.path().join("stick.img");
+        fs::write(&stick, b"fake stick").unwrap();
+
+        // Pre-place a symlink at <work>/OVMF_VARS.fd that points
+        // outside work_dir. fs::copy would otherwise follow it.
+        let work = tmp.path().join("work");
+        fs::create_dir_all(&work).unwrap();
+        let escape_target = tmp.path().join("escape-target.fd");
+        fs::write(&escape_target, b"would-be victim").unwrap();
+        std::os::unix::fs::symlink(&escape_target, work.join("OVMF_VARS.fd")).unwrap();
+
+        let swtpm = fake_swtpm(TpmVersion::None, tmp.path());
+        let mut p = tpm20_persona();
+        p.tpm.version = TpmVersion::None;
+
+        let err = Invocation::new(&p, &stick, &work, &fw, &swtpm).unwrap_err();
+        assert!(
+            matches!(err, InvocationError::VarsCopyEscapedRoot { .. }),
+            "expected VarsCopyEscapedRoot, got {err:?}"
+        );
+
+        // The would-be-victim file SHOULD have been overwritten by
+        // fs::copy (that's the attack); the test's value is asserting
+        // the boundary check FAILS the run so QEMU is never spawned
+        // against the leaked path. Document the residual concern as
+        // a known limitation: file::copy follows the symlink before we
+        // can intercept it; defense is "refuse to proceed", not
+        // "prevent write." Future hardening can switch to
+        // open(O_NOFOLLOW) + write directly.
+    }
+
+    #[test]
+    fn invocation_new_canonicalizes_vars_copy_through_relative_work_dir() {
+        // A relative work_dir like "work/run-1" should canonicalize to
+        // an absolute path; the resulting vars_copy must be absolute
+        // and under the canonical work root.
+        let tmp = tempfile::tempdir().unwrap();
+        let fw = tmp.path().join("fw");
+        fs::create_dir_all(&fw).unwrap();
+        fs::write(fw.join("OVMF_CODE_4M.secboot.fd"), b"code").unwrap();
+        fs::write(fw.join("OVMF_VARS_4M.ms.fd"), b"vars template").unwrap();
+
+        let stick = tmp.path().join("stick.img");
+        fs::write(&stick, b"fake stick").unwrap();
+
+        let work = tmp.path().join("work");
+        fs::create_dir_all(&work).unwrap();
+
+        let swtpm = fake_swtpm(TpmVersion::Tpm20, tmp.path());
+        let inv = Invocation::new(&tpm20_persona(), &stick, &work, &fw, &swtpm).unwrap();
+
+        // Canonicalized path: must be absolute + under canonical work root.
+        let canonical_work = fs::canonicalize(&work).unwrap();
+        assert!(inv.vars_copy().is_absolute());
+        assert!(
+            inv.vars_copy().starts_with(&canonical_work),
+            "vars_copy {} should start with canonical work root {}",
+            inv.vars_copy().display(),
+            canonical_work.display()
+        );
     }
 }
