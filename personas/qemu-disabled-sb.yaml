@@ -1,0 +1,41 @@
+schema_version: 1
+id: qemu-disabled-sb
+vendor: QEMU
+display_name: "QEMU diagnostic (Secure Boot disabled)"
+year: 2024
+
+source:
+  # Harness-only persona for the SB-disabled diagnostic path.
+  # aegis-boot's contract: when Secure Boot is disabled, the operator
+  # gets a SignatureRejected-equivalent refusal to flash. This persona
+  # exercises the only remaining ovmf_variant branch (Disabled, which
+  # uses non-secboot CODE + blank VARS) — every other persona uses
+  # MS-enrolled. Without it, the qemu::Invocation Disabled path is
+  # exercised only by unit tests, not by the matrix.
+  kind: vendor_docs
+  ref_: "QEMU -smbios documentation + OVMF non-secboot reference"
+
+dmi:
+  sys_vendor: QEMU
+  product_name: "Standard PC (Q35 + ICH9, 2009)"
+  bios_vendor: EDK II
+  bios_version: "edk2-stable202402"
+  bios_date: 02/29/2024
+
+secure_boot:
+  ovmf_variant: disabled
+
+tpm:
+  # SB-disabled diagnostic doesn't need TPM. Keeps the persona
+  # lightweight and avoids requiring swtpm in CI for matrix coverage
+  # of this branch.
+  version: none
+
+kernel:
+  lockdown: inherit
+
+quirks:
+  - tag: harness-self-test-only
+    description: "Diagnostic persona for the SB-disabled boot path. Not a real laptop."
+  - tag: secure-boot-off-aegis-refuses
+    description: "aegis-boot's contract is to REFUSE to flash when SB is disabled (rather than silently downgrade trust). Any scenario covering this persona should assert that refusal, not boot success."
