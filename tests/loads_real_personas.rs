@@ -14,8 +14,8 @@ fn shipped_personas_load_without_error() {
     let opts = LoadOptions::default_at(&repo_root);
     let personas = load_all(&opts).unwrap_or_else(|e| panic!("load_all failed: {e}"));
     assert!(
-        personas.len() >= 6,
-        "expected ≥6 personas after Phase 2, got {}",
+        personas.len() >= 7,
+        "expected ≥7 personas after Phase 2 + smoke persona, got {}",
         personas.len()
     );
     let ids: std::collections::HashSet<_> = personas.iter().map(|p| p.id.as_str()).collect();

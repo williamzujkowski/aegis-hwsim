@@ -210,12 +210,15 @@ pub fn build_argv(
         ),
     ]);
 
-    // USB stick.
+    // USB stick. q35 doesn't ship a USB controller by default; explicit
+    // qemu-xhci needed before usb-storage can attach to a bus.
     argv.extend([
+        "-device".into(),
+        "qemu-xhci,id=xhci".into(),
         "-drive".into(),
         format!("file={},format=raw,if=none,id=stick", stick.display()),
         "-device".into(),
-        "usb-storage,drive=stick".into(),
+        "usb-storage,bus=xhci.0,drive=stick".into(),
     ]);
 
     // TPM wiring (skipped when SwtpmInstance::NoTpm).
@@ -497,7 +500,11 @@ mod tests {
         .unwrap();
         let joined = argv.join(" ");
         assert!(joined.contains("file=/flash/aegis-boot.img,format=raw,if=none,id=stick"));
-        assert!(joined.contains("usb-storage,drive=stick"));
+        assert!(
+            joined.contains("qemu-xhci,id=xhci"),
+            "q35 needs explicit USB controller"
+        );
+        assert!(joined.contains("usb-storage,bus=xhci.0,drive=stick"));
     }
 
     #[test]

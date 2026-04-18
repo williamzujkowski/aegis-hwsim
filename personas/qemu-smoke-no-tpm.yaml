@@ -1,0 +1,35 @@
+schema_version: 1
+id: qemu-smoke-no-tpm
+vendor: QEMU
+display_name: "QEMU smoke (no TPM, OVMF reference)"
+year: 2024
+
+source:
+  # This persona exists for harness self-test only — it has no
+  # corresponding physical hardware. Verified: every shipping QEMU
+  # invocation that uses these DMI values reaches OVMF.
+  kind: vendor_docs
+  ref_: "QEMU -smbios documentation + OVMF default DMI"
+
+dmi:
+  sys_vendor: QEMU
+  product_name: "Standard PC (Q35 + ICH9, 2009)"
+  bios_vendor: EDK II
+  bios_version: "edk2-stable202402"
+  bios_date: 02/29/2024
+
+secure_boot:
+  ovmf_variant: ms_enrolled
+
+tpm:
+  # Smoke runs without swtpm so CI doesn't have to install the TPM
+  # emulator just to prove the QEMU+OVMF pipeline is wired. Any
+  # TPM-bearing scenarios use the other personas.
+  version: none
+
+kernel:
+  lockdown: inherit
+
+quirks:
+  - tag: harness-self-test-only
+    description: "This persona is for aegis-hwsim's own qemu-boots-ovmf smoke scenario. Not a real laptop."

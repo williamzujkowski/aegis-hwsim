@@ -11,6 +11,15 @@ jobs:
         run: |
           rustup toolchain install 1.85.0 --profile minimal --component clippy,rustfmt
           rustup default 1.85.0
+      - name: Install QEMU + OVMF for smoke scenario
+        # qemu-boots-ovmf integration test exercises the full
+        # Persona → Invocation → SerialCapture pipeline end-to-end.
+        # Without these the test self-Skips, which is fine — but
+        # installing them turns Skip into Pass and proves the harness
+        # is wired correctly. Tiny install cost; outsized signal.
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -qq -y qemu-system-x86 ovmf
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test --locked
