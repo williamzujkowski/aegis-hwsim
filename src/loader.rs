@@ -295,9 +295,16 @@ fn quirk_tag_is_valid(tag: &str) -> bool {
 /// traversing one.
 fn check_custom_keyring(path: &Path, keyring: &Path, root: &Path) -> Result<(), LoadError> {
     let canon_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
-    let canon_keyring = keyring
-        .canonicalize()
-        .unwrap_or_else(|_| keyring.to_path_buf());
+    // Relative `custom_keyring` resolves against firmware_root — that's
+    // the contract documented in firmware/test-keyring/README.md and in
+    // docs/persona-authoring.md. Absolute paths stay as-is so the
+    // existing /etc/passwd-traversal negative test continues to fire.
+    let resolved = if keyring.is_absolute() {
+        keyring.to_path_buf()
+    } else {
+        canon_root.join(keyring)
+    };
+    let canon_keyring = resolved.canonicalize().unwrap_or_else(|_| resolved.clone());
     if !canon_keyring.starts_with(&canon_root) {
         return Err(LoadError::CustomKeyringOutsideRoot {
             path: path.to_path_buf(),
@@ -494,5 +501,54 @@ tpm:
         write(&opts.personas_dir, "ok.yaml", &body);
         let loaded = load_all(&opts).unwrap();
         assert_eq!(loaded.len(), 1);
+    }
+
+    /// Relative `custom_keyring` paths resolve against `firmware_root`.
+    /// This is the contract documented in `firmware/test-keyring/README.md`
+    /// and exercised by `personas/qemu-custom-pk-sb.yaml`.
+    #[test]
+    fn custom_keyring_relative_path_resolves_against_firmware_root() {
+        let (_tmp, opts) = tmp_opts();
+        // Create the keyring under firmware_root/sub/keyring.fd, then
+        // reference it via the RELATIVE path "sub/keyring.fd" from the
+        // persona YAML.
+        let sub = opts.firmware_root.join("sub");
+        fs::create_dir_all(&sub).unwrap();
+        let keyring_abs = sub.join("keyring.fd");
+        fs::write(&keyring_abs, b"placeholder").unwrap();
+
+        let mut body = minimal_yaml("relpath");
+        body = body.replace(
+            "secure_boot:\n  ovmf_variant: ms_enrolled\n",
+            "secure_boot:\n  ovmf_variant: custom_pk\n  custom_keyring: sub/keyring.fd\n",
+        );
+        write(&opts.personas_dir, "relpath.yaml", &body);
+        let loaded = load_all(&opts).unwrap();
+        assert_eq!(loaded.len(), 1);
+    }
+
+    /// Relative `custom_keyring` with `..` traversal must still be rejected
+    /// — the post-canonicalize `starts_with` check catches it even after
+    /// the join with `firmware_root`.
+    #[test]
+    fn custom_keyring_relative_path_with_traversal_is_rejected() {
+        let (_tmp, opts) = tmp_opts();
+        // Create a target file *outside* firmware_root.
+        let escape = opts.firmware_root.parent().unwrap().join("escape.fd");
+        fs::write(&escape, b"outside").unwrap();
+        // Reference via relative `../escape.fd` — joins to
+        // firmware_root/../escape.fd = the file above. Canonicalize
+        // resolves to the absolute outside-root path; starts_with fails.
+        let mut body = minimal_yaml("traversal");
+        body = body.replace(
+            "secure_boot:\n  ovmf_variant: ms_enrolled\n",
+            "secure_boot:\n  ovmf_variant: custom_pk\n  custom_keyring: ../escape.fd\n",
+        );
+        write(&opts.personas_dir, "traversal.yaml", &body);
+        let err = load_all(&opts).unwrap_err();
+        assert!(
+            matches!(err, LoadError::CustomKeyringOutsideRoot { .. }),
+            "got {err:?}"
+        );
     }
 }

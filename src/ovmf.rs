@@ -193,9 +193,20 @@ fn resolve_vars(firmware_root: &Path, name: &str) -> Result<PathBuf, OvmfError> 
 /// Canonicalize `keyring` and require it to live under the (canonicalized)
 /// `firmware_root`. Rejects `../` traversal, absolute paths outside root,
 /// and symlink escapes.
+///
+/// Resolution rules (mirrors the loader's `check_custom_keyring`):
+/// - Absolute keyring paths are used as-is, then canonicalized.
+/// - Relative keyring paths are joined to canonical `firmware_root`
+///   first, then canonicalized. Lets persona YAML express paths like
+///   `test-keyring/OVMF_VARS_test_pk.fd` portably across operators.
 fn verify_keyring_under_root(keyring: &Path, firmware_root: &Path) -> Result<PathBuf, OvmfError> {
-    let keyring_canon = canonicalize_or_err(keyring)?;
     let root_canon = canonicalize_or_err(firmware_root)?;
+    let resolved = if keyring.is_absolute() {
+        keyring.to_path_buf()
+    } else {
+        root_canon.join(keyring)
+    };
+    let keyring_canon = canonicalize_or_err(&resolved)?;
     if keyring_canon.starts_with(&root_canon) {
         Ok(keyring_canon)
     } else {

@@ -1,0 +1,52 @@
+schema_version: 1
+id: qemu-custom-pk-sb
+vendor: QEMU
+display_name: "QEMU diagnostic (Secure Boot with custom PK — test keyring)"
+year: 2024
+
+source:
+  # Harness-only persona for the SB custom-PK boot path. Custom PK is
+  # the operator-controlled enrollment flow: enterprises that don't
+  # trust the MS UEFI CA (or that enroll their own corporate CA on top)
+  # use this posture. aegis-boot's contract is to verify against the
+  # enrolled CA chain, not to assume MS-only.
+  #
+  # IMPORTANT: the keyring referenced here is a 1 MB pseudo-random
+  # PLACEHOLDER, not a real keyring. It exists to exercise the loader's
+  # custom_keyring path-boundary check and qemu::Invocation's CustomPk
+  # variant resolution. A persona referencing this file CANNOT actually
+  # boot — OVMF will reject the malformed VARS during firmware init.
+  # Real test keyrings (with the harness-test-marker token baked into
+  # the cert CN per aegis-boot#226 security-engineer constraint #4) are
+  # a follow-up; generation requires openssl + virt-fw-vars.
+  kind: vendor_docs
+  ref_: "OVMF Custom PK enrollment + aegis-hwsim firmware/test-keyring/README.md"
+
+dmi:
+  sys_vendor: QEMU
+  product_name: "Standard PC (Q35 + ICH9, 2009)"
+  bios_vendor: EDK II
+  bios_version: "edk2-stable202402"
+  bios_date: 02/29/2024
+
+secure_boot:
+  ovmf_variant: custom_pk
+  # Relative path — resolved against firmware_root by both the loader
+  # and qemu::Invocation. See firmware/test-keyring/README.md.
+  custom_keyring: test-keyring/OVMF_VARS_test_pk.fd
+
+tpm:
+  # Custom-PK is about SB key state, not TPM. No-TPM keeps the persona
+  # harness-self-test-eligible.
+  version: none
+
+kernel:
+  lockdown: inherit
+
+quirks:
+  - tag: harness-self-test-only
+    description: "Diagnostic persona for SB custom-PK boot path. Not a real laptop."
+  - tag: custom-pk-keyring-is-placeholder
+    description: "The custom_keyring file under firmware/test-keyring/ is a 1 MB pseudo-random placeholder — exercises path-boundary + variant-resolution logic but cannot actually boot. Real test keyring (with the harness-test-marker baked into the cert CN) is future work; tracked in firmware/test-keyring/README.md."
+  - tag: custom-pk-enterprise-flow
+    description: "Custom-PK is the enterprise-CA enrollment flow. Operators replace MS UEFI CA's PK + KEK + db with their own. aegis-boot's contract: verify against the enrolled chain, never assume MS-only."
