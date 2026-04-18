@@ -67,13 +67,20 @@ cargo build --release
 
 # Health-check the host first — surfaces all missing apt packages in
 # one pass instead of one-at-a-time via scenario Skip messages.
-target/release/aegis-hwsim doctor
+target/release/aegis-hwsim doctor               # Human-readable
+target/release/aegis-hwsim doctor --json        # schema_version=1 envelope
 
 # Inventory the shipped persona library
 target/release/aegis-hwsim list-personas
+target/release/aegis-hwsim list-personas --json
 
 # List registered scenarios
 target/release/aegis-hwsim list-scenarios
+target/release/aegis-hwsim list-scenarios --json
+
+# Version (matches aegis-boot --version --json convention for scriptable installs)
+target/release/aegis-hwsim --version
+target/release/aegis-hwsim --version --json
 
 # Smoke-test the harness pipeline (no signed stick needed)
 target/release/aegis-hwsim run qemu-smoke-no-tpm qemu-boots-ovmf /tmp/dummy.img
@@ -91,6 +98,8 @@ target/release/aegis-hwsim run \
   signed-boot-ubuntu \
   /path/to/aegis-boot.img
 ```
+
+Every read-mostly subcommand accepts `--json` and emits a `schema_version=1` envelope — matches the [aegis-boot family convention (PR #191)](https://github.com/williamzujkowski/aegis-boot/pull/191) so scripted consumers parse uniformly across the family.
 
 ### Exit codes
 
