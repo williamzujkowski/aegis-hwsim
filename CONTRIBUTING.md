@@ -19,6 +19,8 @@ cargo run --release --bin aegis-hwsim -- coverage-grid
 
 If `doctor` flags FAIL, fix that first; most issues are missing apt packages (`qemu-system-x86`, `ovmf`, `swtpm`).
 
+Then read [docs/architecture.md](docs/architecture.md) before opening a non-trivial PR — it explains how persona → ovmf → swtpm → Invocation → SerialCapture → scenario fits together, what the trust boundaries are, and why the harness is shaped the way it is.
+
 ## What we accept
 
 | Type of change | Accepted? | Notes |
