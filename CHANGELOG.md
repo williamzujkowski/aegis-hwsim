@@ -8,6 +8,10 @@ All notable changes to aegis-hwsim. Mirrors the [Keep a Changelog](https://keepa
 
 - **Bump Node-20-based GitHub Actions to Node-24-compatible v5** (closes [#59](https://github.com/williamzujkowski/aegis-hwsim/issues/59)) — `actions/checkout@v4 → @v5` and `actions/upload-artifact@v4 → @v5` in `.github/workflows/ci.yml`. Closes the deprecation banner runners surface ("Node.js 20 actions are deprecated… Node.js 20 will be removed from the runner on September 16th, 2026"). Single-line changes; v5 is backward-compatible with the explicit `retention-days: 30` and `if-no-files-found: error` settings we use.
 
+### Documentation
+
+- **Research index gains a structured registry layer** — new `docs/research/INDEX.md` (frontmatter-bearing canonical entry point) plus `docs/research/registry/{sources,papers,projects}.yaml` for machine-readable enumeration of adjacent tools (14), academic papers (5), and 2025/2026 delta-scan projects (5). New `docs/research/registry/SCHEMA.json` (JSON Schema 2020-12) defines the contract — three `oneOf` variants for the three YAML types, with required `tie_in` (papers) and `notes` (sources, projects) so every entry justifies its inclusion. CI gains a `check-jsonschema`-based validation step. Mirrors the [nexus-agents](https://github.com/williamzujkowski/nexus-agents) pattern: human-readable narrative in `*.md`, machine-readable registry in `*.yaml`. The legacy `README.md` is preserved for back-compat with existing inbound links and now redirects to `INDEX.md` as the canonical entry.
+
 ## [0.0.2] — 2026-04-18
 
 First post-scaffolding marker. Phase 1 + Phase 2 functionally complete: 11 personas covering all 4 OVMF variants and all 3 TPM versions, 2 scenarios (one of which runs end-to-end on every CI PR against real QEMU+OVMF), coverage-grid artifact published per PR, doctor + contributor docs + architecture overview shipped, family-convention `--json` sweep complete on every read-mostly subcommand. 113 tests including 60k random-input fuzz inputs per CI run.

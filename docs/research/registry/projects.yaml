@@ -1,0 +1,79 @@
+# Projects observed during the recent-projects (delta) scan. Tracks
+# new entrants and materially-evolved tools in the ~18-month window
+# preceding the most recent capture. Narrative analysis lives in
+# ../recent-projects.md.
+#
+# Validation: schema is at SCHEMA.json (JSON Schema 2020-12).
+schema_version: '1.0'
+
+projects:
+  qemu-tpm-measurement:
+    id: qemu-tpm-measurement
+    name: anpep/qemu-tpm-measurement
+    url: https://github.com/anpep/qemu-tpm-measurement
+    language: Shell
+    first_seen: '2026-04-18'
+    relationship: reference
+    relevance: medium
+    status: active
+    why_it_matters: Minimal reproducer for QEMU+OVMF+swtpm boot-measurement + PCR-extend reads via /sys/kernel/security/tpm0/binary_bios_measurements. Useful sanity-check harness when debugging aegis-hwsim's TPM event-log capture path. Single config, manual — not a matrix.
+    added_at: '2026-04-18'
+    last_verified_at: '2026-04-18'
+    tags: [qemu, tpm, attestation, pcr]
+
+  intel-tsffs:
+    id: intel-tsffs
+    name: intel/tsffs
+    url: https://github.com/intel/tsffs
+    language: Rust
+    first_seen: '2026-04-18'
+    relationship: complementary
+    relevance: medium
+    status: active
+    why_it_matters: Snapshotting coverage-guided UEFI/BIOS/firmware fuzzer on SIMICS. Adjacent to aegis-hwsim's testable surface — they fuzz firmware-internal paths, we drive OS-visible signed-chain flows. Would pair well if a future aegis-hwsim consumer wanted fuzz-and-conformance in one CI.
+    added_at: '2026-04-18'
+    last_verified_at: '2026-04-18'
+    tags: [uefi, fuzzing, simics, intel]
+
+  fwupd-sbat-plugin:
+    id: fwupd-sbat-plugin
+    name: fwupd SBAT plugin (since fwupd 2.0.0, 2024)
+    url: https://fwupd.github.io/libfwupdplugin/uefi-sbat-README.html
+    language: C
+    first_seen: '2026-04-18'
+    relationship: integration-target
+    relevance: high
+    status: active
+    why_it_matters: SBAT revocation delivery via LVFS became a real operational gap Jul 2024–Jan 2025. A future persona axis sbat_generation would let aegis-hwsim assert rescue-stick behavior under stale-SBAT conditions — real-world failure mode currently untested.
+    added_at: '2026-04-18'
+    last_verified_at: '2026-04-18'
+    tracks_issue: '51'
+    tags: [sbat, fwupd, lvfs, revocation]
+
+  systemd-ukify:
+    id: systemd-ukify
+    name: systemd-ukify + UKI ecosystem
+    url: https://uapi-group.org/specifications/specs/unified_kernel_image/
+    language: Python
+    first_seen: '2026-04-18'
+    relationship: integration-target
+    relevance: high
+    status: active
+    why_it_matters: UKIs collapse kernel + initrd + cmdline into one signed PE — changes what "signed-chain" means in practice. aegis-boot's USB-rescue-stick path needs a UKI-aware scenario now that distros (Arch, Fedora 40+, Debian testing) ship ukify as first-class. Worth a scenario added alongside signed-boot-ubuntu.
+    added_at: '2026-04-18'
+    last_verified_at: '2026-04-18'
+    tracks_issue: '50'
+    tags: [uki, systemd, signed-pe, secureboot]
+
+  dasharo-qemu-matrix:
+    id: dasharo-qemu-matrix
+    name: Dasharo QEMU q35 hardware matrix
+    url: https://docs.dasharo.com/variants/qemu_q35/hardware-matrix/
+    first_seen: '2026-04-18'
+    relationship: reference
+    relevance: low
+    status: active
+    why_it_matters: Published QEMU-targeted hardware matrix, but it's a *supported-configurations* list for their coreboot-based firmware product — not a test harness. Noted for completeness; no functional overlap with aegis-hwsim.
+    added_at: '2026-04-18'
+    last_verified_at: '2026-04-18'
+    tags: [coreboot, dasharo, hardware-matrix]

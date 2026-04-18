@@ -25,6 +25,19 @@ jobs:
       - run: cargo test --locked
       - name: Check JSONSchema is in sync with source
         run: cargo run --locked -q --bin aegis-hwsim -- gen-schema --check schemas/persona.schema.json
+      - name: Validate research registry against SCHEMA.json
+        # docs/research/registry/{sources,papers,projects}.yaml each
+        # carry structured metadata about adjacent tools / papers /
+        # projects. SCHEMA.json (JSON Schema 2020-12) is the contract.
+        # check-jsonschema is a single Python install with no Rust
+        # dep — cheaper than wiring schemars into the binary.
+        run: |
+          pipx install check-jsonschema
+          for f in docs/research/registry/sources.yaml \
+                   docs/research/registry/papers.yaml \
+                   docs/research/registry/projects.yaml; do
+            check-jsonschema --schemafile docs/research/registry/SCHEMA.json "$f"
+          done
       - name: Generate coverage-grid artifact
         # Live grid (not --dry-run) — actually runs each cell. The
         # smoke scenario will Pass against qemu-smoke-no-tpm; everything

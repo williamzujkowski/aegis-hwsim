@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/williamzujkowski/aegis-hwsim/docs/research/registry/SCHEMA.json",
+  "title": "aegis-hwsim research registry",
+  "description": "Schema for structured research entries (sources, papers, projects). Mirrors the nexus-agents pattern: human-readable narrative in *.md, machine-readable registry in *.yaml.",
+  "$defs": {
+    "RelevanceTag": {
+      "type": "string",
+      "enum": ["high", "medium", "low"],
+      "description": "How strongly this entry informs aegis-hwsim's design or scope."
+    },
+    "RelationshipKind": {
+      "type": "string",
+      "enum": [
+        "complementary",
+        "integration-target",
+        "reference",
+        "orthogonal",
+        "competitor",
+        "potential-adopter"
+      ],
+      "description": "How this entry relates to aegis-hwsim. 'competitor' is reserved for direct overlap (none found at v0.0.x); see prior-art.md for the differentiation rationale."
+    },
+    "EntryStatus": {
+      "type": "string",
+      "enum": ["active", "archived", "stale"],
+      "description": "active = currently relevant; stale = needs re-verification; archived = superseded or historical."
+    },
+    "Source": {
+      "type": "object",
+      "required": ["id", "name", "url", "scope", "relationship", "status", "added_at"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$",
+          "description": "Stable kebab-case identifier. Used in cross-references and changelogs."
+        },
+        "name": { "type": "string", "minLength": 1 },
+        "url": { "type": "string", "format": "uri" },
+        "scope": {
+          "type": "string",
+          "minLength": 1,
+          "description": "One-sentence description of what the project does."
+        },
+        "relationship": { "$ref": "#/$defs/RelationshipKind" },
+        "status": { "$ref": "#/$defs/EntryStatus" },
+        "relevance": { "$ref": "#/$defs/RelevanceTag" },
+        "language": {
+          "type": "string",
+          "description": "Primary implementation language (Rust, C, Python, ...)."
+        },
+        "license": { "type": "string" },
+        "added_at": {
+          "type": "string",
+          "format": "date",
+          "description": "Date this entry was added (YYYY-MM-DD, America/New_York)."
+        },
+        "last_verified_at": {
+          "type": "string",
+          "format": "date",
+          "description": "Date the URL + scope last spot-checked. Stale after 12 months."
+        },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "notes": { "type": "string" }
+      }
+    },
+    "Paper": {
+      "type": "object",
+      "required": ["id", "title", "year", "venue", "url", "tie_in", "status", "added_at"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^(arxiv|doi|paper)[-:][a-z0-9./_-]+$",
+          "description": "Verifiable identifier — arxiv:ID, doi:ID, or paper:slug for non-DOI conference papers."
+        },
+        "title": { "type": "string", "minLength": 1 },
+        "authors": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "year": { "type": "integer", "minimum": 1900, "maximum": 2100 },
+        "venue": {
+          "type": "string",
+          "description": "Publication venue (arXiv, USENIX Security, NDSS, ARES, ...)."
+        },
+        "url": { "type": "string", "format": "uri" },
+        "doi": { "type": "string" },
+        "arxiv_id": { "type": "string" },
+        "tie_in": {
+          "type": "string",
+          "minLength": 1,
+          "description": "How this paper informs aegis-hwsim's design — required, no exceptions."
+        },
+        "relevance": { "$ref": "#/$defs/RelevanceTag" },
+        "status": { "$ref": "#/$defs/EntryStatus" },
+        "added_at": { "type": "string", "format": "date" },
+        "last_verified_at": { "type": "string", "format": "date" },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        }
+      }
+    },
+    "Project": {
+      "type": "object",
+      "required": ["id", "name", "url", "first_seen", "relationship", "status", "added_at"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "name": { "type": "string", "minLength": 1 },
+        "url": { "type": "string", "format": "uri" },
+        "language": { "type": "string" },
+        "license": { "type": "string" },
+        "first_seen": {
+          "type": "string",
+          "format": "date",
+          "description": "Date this project was first observed in the recent-projects scan."
+        },
+        "relationship": { "$ref": "#/$defs/RelationshipKind" },
+        "relevance": { "$ref": "#/$defs/RelevanceTag" },
+        "why_it_matters": { "type": "string", "minLength": 1 },
+        "status": { "$ref": "#/$defs/EntryStatus" },
+        "added_at": { "type": "string", "format": "date" },
+        "last_verified_at": { "type": "string", "format": "date" },
+        "tracks_issue": {
+          "type": "string",
+          "description": "Issue number on this repo where the followup is tracked, if any."
+        },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        }
+      }
+    }
+  },
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "sources.yaml",
+      "required": ["schema_version", "sources"],
+      "properties": {
+        "schema_version": { "const": "1.0" },
+        "sources": {
+          "type": "object",
+          "patternProperties": {
+            "^[a-z0-9][a-z0-9-]*$": { "$ref": "#/$defs/Source" }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "title": "papers.yaml",
+      "required": ["schema_version", "papers"],
+      "properties": {
+        "schema_version": { "const": "1.0" },
+        "papers": {
+          "type": "object",
+          "patternProperties": {
+            "^(arxiv|doi|paper)[-:][a-z0-9./_-]+$": { "$ref": "#/$defs/Paper" }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "title": "projects.yaml",
+      "required": ["schema_version", "projects"],
+      "properties": {
+        "schema_version": { "const": "1.0" },
+        "projects": {
+          "type": "object",
+          "patternProperties": {
+            "^[a-z0-9][a-z0-9-]*$": { "$ref": "#/$defs/Project" }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  ]
+}

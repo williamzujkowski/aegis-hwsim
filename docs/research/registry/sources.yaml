@@ -1,0 +1,215 @@
+# Catalog of adjacent tools, frameworks, and references that informed
+# aegis-hwsim's design or scope. Narrative analysis lives in
+# ../prior-art.md; this file is the machine-readable index for
+# downstream tooling (link-checkers, README generators, CHANGELOG
+# emitters).
+#
+# Validation: schema is at SCHEMA.json (JSON Schema 2020-12).
+# Add an entry here when prior-art.md gains a new "Tool catalog" row.
+schema_version: '1.0'
+
+sources:
+  chipsec:
+    id: chipsec
+    name: chipsec
+    url: https://github.com/chipsec/chipsec
+    scope: Intel-authored UEFI/platform security scanner — audits live SPI/BIOS/SMM/SB config on real hardware.
+    relationship: complementary
+    status: active
+    relevance: high
+    language: Python
+    license: GPL-2.0-only
+    added_at: '2026-04-18'
+    last_verified_at: '2026-04-18'
+    tags: [uefi, audit, live-system]
+    notes: Use as reference for the shape of SB-config checks; not an emulator.
+
+  fwts:
+    id: fwts
+    name: Firmware Test Suite (Canonical)
+    url: https://github.com/fwts/fwts
+    scope: ACPI/UEFI/SMBIOS conformance test suite from Canonical.
+    relationship: complementary
+    status: active
+    relevance: medium
+    language: C
+    license: GPL-2.0-only
+    added_at: '2026-04-18'
+    last_verified_at: '2026-04-18'
+    tags: [uefi, conformance, canonical]
+    notes: Tests firmware correctness; we test OS-visible signed-chain flow.
+
+  edk2-sct:
+    id: edk2-sct
+    name: edk2 SCT (UEFI Self-Certification Test)
+    url: https://github.com/tianocore/edk2-test
+    scope: UEFI spec conformance tests for firmware implementers.
+    relationship: orthogonal
+    status: active
+    relevance: low
+    language: C
+    license: BSD-2-Clause-Patent
+    added_at: '2026-04-18'
+    last_verified_at: '2026-04-18'
+    tags: [uefi, spec, conformance]
+
+  kernelci:
+    id: kernelci
+    name: KernelCI
+    url: https://kernelci.org
+    scope: Upstream Linux kernel CI on real boards + QEMU.
+    relationship: orthogonal
+    status: active
+    relevance: low
+    language: Python
+    license: LGPL-2.1-or-later
+    added_at: '2026-04-18'
+    last_verified_at: '2026-04-18'
+    tags: [kernel, ci, qemu]
+    notes: Kernel regression scope, not Secure Boot / TPM scenario matrix.
+
+  lava:
+    id: lava
+    name: LAVA (Linaro Automated Validation Architecture)
+    url: https://docs.lavasoftware.org
+    scope: Deployment orchestrator for lab boards + QEMU; YAML-defined test definitions.
+    relationship: integration-target
+    status: active
+    relevance: high
+    language: Python
+    license: GPL-2.0-or-later
+    added_at: '2026-04-18'
+    last_verified_at: '2026-04-18'
+    tags: [orchestration, qemu, lab]
+    notes: aegis-hwsim could emit LAVA job definitions as an optional export. LAVA also documented that "UEFI automation proved to be unworkable in automation due to complexity of the sequences" — validates our scoped-down approach.
+
+  labgrid:
+    id: labgrid
+    name: labgrid
+    url: https://github.com/labgrid-project/labgrid
+    scope: pytest-style hardware-in-loop test harness.
+    relationship: integration-target
+    status: active
+    relevance: medium
+    language: Python
+    license: LGPL-2.1-or-later
+    added_at: '2026-04-18'
+    last_verified_at: '2026-04-18'
+    tags: [pytest, hardware-in-loop]
+    notes: Same pattern, real-hardware focused. aegis-hwsim could ship a labgrid pytest collector.
+
+  osbuild:
+    id: osbuild
+    name: OSBuild
+    url: https://www.osbuild.org
+    scope: Image builder with QEMU-based boot-test plugin.
+    relationship: orthogonal
+    status: active
+    relevance: low
+    language: Python
+    license: Apache-2.0
+    added_at: '2026-04-18'
+    last_verified_at: '2026-04-18'
+    tags: [image-builder]
+    notes: Builds images, doesn't validate signed-chain across personas.
+
+  fwupd-qemu-ci:
+    id: fwupd-qemu-ci
+    name: fwupd QEMU+OVMF+swtpm CI
+    url: https://github.com/fwupd/fwupd
+    scope: Industrial capsule-update CI using the same QEMU+OVMF+swtpm stack we depend on.
+    relationship: reference
+    status: active
+    relevance: high
+    language: C
+    license: LGPL-2.1-or-later
+    added_at: '2026-04-18'
+    last_verified_at: '2026-04-18'
+    tags: [qemu, ovmf, swtpm, fwupd, ci]
+    notes: Reference for scaffolding patterns — borrow, don't rewrite.
+
+  openqa:
+    id: openqa
+    name: openQA (SUSE)
+    url: https://open.qa
+    scope: VM-based distribution regression testing — exercises shim/grub Secure Boot paths per distro.
+    relationship: complementary
+    status: active
+    relevance: medium
+    language: Perl
+    license: GPL-2.0-or-later
+    added_at: '2026-04-18'
+    last_verified_at: '2026-04-18'
+    tags: [qemu, distro, regression]
+    notes: Per-distro coverage; aegis-hwsim does per-laptop-vendor coverage. Adjacent, not overlap.
+
+  sbctl:
+    id: sbctl
+    name: sbctl
+    url: https://github.com/Foxboron/sbctl
+    scope: Secure Boot key management CLI — enroll PK/KEK/db keys.
+    relationship: complementary
+    status: active
+    relevance: medium
+    language: Go
+    license: MIT
+    added_at: '2026-04-18'
+    last_verified_at: '2026-04-18'
+    tags: [secureboot, key-management]
+
+  shim-review:
+    id: shim-review
+    name: shim-review
+    url: https://github.com/rhboot/shim-review
+    scope: Upstream shim-review process for distro shim signing requests.
+    relationship: potential-adopter
+    status: active
+    relevance: medium
+    license: GPL-3.0-only
+    added_at: '2026-04-18'
+    last_verified_at: '2026-04-18'
+    tags: [shim, secureboot, process]
+    notes: Process, not code. Reviewers are a natural first-adopter audience for aegis-hwsim's persona matrix.
+
+  puzzleos-uefi-dev:
+    id: puzzleos-uefi-dev
+    name: puzzleos/uefi-dev
+    url: https://github.com/puzzleos/uefi-dev
+    scope: Single-config QEMU/OVMF/swtpm UEFI Secure Boot dev environment.
+    relationship: reference
+    status: active
+    relevance: medium
+    language: Shell
+    license: MIT
+    added_at: '2026-04-18'
+    last_verified_at: '2026-04-18'
+    tags: [qemu, ovmf, swtpm, dev-scaffold]
+    notes: Closest single-config analog to aegis-hwsim. Single persona vs. our matrix.
+
+  tompreston-qemu-ovmf-swtpm:
+    id: tompreston-qemu-ovmf-swtpm
+    name: tompreston/qemu-ovmf-swtpm
+    url: https://github.com/tompreston/qemu-ovmf-swtpm
+    scope: Setup scripts for local QEMU+OVMF+swtpm testing.
+    relationship: reference
+    status: active
+    relevance: low
+    language: Shell
+    license: BSD-2-Clause
+    added_at: '2026-04-18'
+    last_verified_at: '2026-04-18'
+    tags: [qemu, ovmf, swtpm, setup]
+    notes: Reference starter scripts. Not a harness.
+
+  noodles-qemu-uefi-blog:
+    id: noodles-qemu-uefi-blog
+    name: Noodles' QEMU+UEFI testing blog
+    url: https://www.earth.li/~noodles/blog/2024/07/qemu-uefi-testing.html
+    scope: Practitioner walkthrough of the QEMU+OVMF+swtpm setup with Secure Boot.
+    relationship: reference
+    status: active
+    relevance: medium
+    added_at: '2026-04-18'
+    last_verified_at: '2026-04-18'
+    tags: [tutorial, qemu, ovmf, swtpm]
+    notes: Reference for setup-time gotchas (OVMF_VARS template, swtpm socket path, etc.).
