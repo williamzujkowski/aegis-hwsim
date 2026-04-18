@@ -1,0 +1,421 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Persona",
+  "description": "Top-level persona YAML. One persona = one shipping hardware configuration.",
+  "type": "object",
+  "required": [
+    "display_name",
+    "dmi",
+    "id",
+    "schema_version",
+    "secure_boot",
+    "source",
+    "tpm",
+    "vendor"
+  ],
+  "properties": {
+    "display_name": {
+      "description": "Human-readable name shown in the coverage-grid output.",
+      "type": "string"
+    },
+    "dmi": {
+      "description": "DMI fields mapped 1:1 to `/sys/class/dmi/id/<field>` — QEMU's `-smbios` flags inject these at boot time.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Dmi"
+        }
+      ]
+    },
+    "id": {
+      "description": "Stable kebab-case identifier. Must match the YAML filename (without the `.yaml` extension).",
+      "type": "string"
+    },
+    "kernel": {
+      "description": "Kernel lockdown mode for the booted kernel.",
+      "default": {
+        "lockdown": "inherit"
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/Kernel"
+        }
+      ]
+    },
+    "quirks": {
+      "description": "Advisory list of vendor-specific quirks the harness can't simulate. Surfaced to the scenario runner so test reports can annotate \"this would work here but not on real hardware because X\".",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Quirk"
+      }
+    },
+    "scenarios": {
+      "description": "Per-scenario run/skip overrides. Opt-out is rare — prefer fixing the scenario over skipping it per-persona.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/ScenarioDecision"
+      }
+    },
+    "schema_version": {
+      "description": "Pins the parser to an exact schema version. Mismatched parsers refuse to load the file. Bumped on breaking changes; additive fields don't bump it.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "secure_boot": {
+      "description": "Secure Boot posture to synthesize.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/SecureBoot"
+        }
+      ]
+    },
+    "source": {
+      "description": "Provenance record. Every persona must cite where its DMI + firmware values came from. See `Source` docs for accepted kinds.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Source"
+        }
+      ]
+    },
+    "tpm": {
+      "description": "TPM version to emulate via swtpm (or skip entirely).",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Tpm"
+        }
+      ]
+    },
+    "vendor": {
+      "description": "SMBIOS `sys_vendor` value verbatim as the vendor ships it. Preserve case (e.g. \"LENOVO\", \"Dell Inc.\", \"Framework\").",
+      "type": "string"
+    },
+    "year": {
+      "description": "Year the SKU first shipped. Optional but recommended — helps contributors understand firmware-era context.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint16",
+      "minimum": 0.0
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "Dmi": {
+      "description": "DMI fields mapped to `/sys/class/dmi/id/<field>`. Everything QEMU's `-smbios type=0/1/2/3/...` injectors can populate.",
+      "type": "object",
+      "required": [
+        "bios_date",
+        "bios_vendor",
+        "bios_version",
+        "product_name",
+        "sys_vendor"
+      ],
+      "properties": {
+        "bios_date": {
+          "description": "Mapped to `/sys/class/dmi/id/bios_date` (MM/DD/YYYY).",
+          "type": "string"
+        },
+        "bios_vendor": {
+          "description": "Mapped to `/sys/class/dmi/id/bios_vendor`.",
+          "type": "string"
+        },
+        "bios_version": {
+          "description": "Mapped to `/sys/class/dmi/id/bios_version`.",
+          "type": "string"
+        },
+        "board_name": {
+          "description": "Mapped to `/sys/class/dmi/id/board_name`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "chassis_type": {
+          "description": "SMBIOS chassis type code (10 = notebook, 3 = desktop, 17 = main server chassis, etc.). See SMBIOS spec §7.4.1.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint8",
+          "minimum": 0.0
+        },
+        "product_name": {
+          "description": "Mapped to `/sys/class/dmi/id/product_name`. SKU code or friendly name per vendor convention (Lenovo puts the friendly name in `product_version`; Dell/HP put it here).",
+          "type": "string"
+        },
+        "product_version": {
+          "description": "Mapped to `/sys/class/dmi/id/product_version`. Lenovo convention.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sys_vendor": {
+          "description": "Mapped to `/sys/class/dmi/id/sys_vendor`.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "Kernel": {
+      "description": "Kernel config for the booted kernel. `Default` leaves the initramfs kernel's lockdown mode unchanged.",
+      "type": "object",
+      "properties": {
+        "lockdown": {
+          "description": "Kernel lockdown mode. `Inherit` uses the initramfs kernel's default.",
+          "default": "inherit",
+          "allOf": [
+            {
+              "$ref": "#/definitions/LockdownMode"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "LockdownMode": {
+      "description": "Kernel lockdown mode (see `Documentation/admin-guide/LSM/LoadPin.rst` and the `lockdown` LSM).",
+      "oneOf": [
+        {
+          "description": "Use the initramfs kernel's built-in default.",
+          "type": "string",
+          "enum": [
+            "inherit"
+          ]
+        },
+        {
+          "description": "Lockdown disabled.",
+          "type": "string",
+          "enum": [
+            "none"
+          ]
+        },
+        {
+          "description": "Integrity mode — blocks kernel-integrity-breaking operations.",
+          "type": "string",
+          "enum": [
+            "integrity"
+          ]
+        },
+        {
+          "description": "Confidentiality mode — integrity + blocks kernel-memory reads.",
+          "type": "string",
+          "enum": [
+            "confidentiality"
+          ]
+        }
+      ]
+    },
+    "OvmfVariant": {
+      "description": "OVMF firmware variant.",
+      "oneOf": [
+        {
+          "description": "MS-enrolled VARs — the most common distro-shipped state.",
+          "type": "string",
+          "enum": [
+            "ms_enrolled"
+          ]
+        },
+        {
+          "description": "Custom PK/KEK/db from hwsim's test keyring. Tests the custom-CA enrollment path. Keys MUST carry `TEST_ONLY_NOT_FOR_PRODUCTION` in the CN per aegis-boot#226 security constraint #4.",
+          "type": "string",
+          "enum": [
+            "custom_pk"
+          ]
+        },
+        {
+          "description": "Setup mode — no PK enrolled. Operator MOK enrollment flow.",
+          "type": "string",
+          "enum": [
+            "setup_mode"
+          ]
+        },
+        {
+          "description": "SB off. Tests the \"aegis-boot refuses to flash\" diagnostic path.",
+          "type": "string",
+          "enum": [
+            "disabled"
+          ]
+        }
+      ]
+    },
+    "Quirk": {
+      "description": "A real-world quirk the harness can't simulate. Informational — exposed to scenarios so coverage reports can annotate \"this would work here but not on real hardware because X\".",
+      "type": "object",
+      "required": [
+        "description",
+        "tag"
+      ],
+      "properties": {
+        "description": {
+          "description": "Long-form description of the quirk and its operator impact.",
+          "type": "string"
+        },
+        "tag": {
+          "description": "Short grep-able tag. Must match `^[a-z0-9][a-z0-9-]*[a-z0-9]$`.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ScenarioDecision": {
+      "description": "Per-scenario run/skip decision.",
+      "oneOf": [
+        {
+          "description": "Scenario runs against this persona.",
+          "type": "string",
+          "enum": [
+            "run"
+          ]
+        },
+        {
+          "description": "Scenario skipped for this persona. Should be rare — prefer fixing the scenario over blanket-skipping it.",
+          "type": "string",
+          "enum": [
+            "skip"
+          ]
+        }
+      ]
+    },
+    "SecureBoot": {
+      "description": "Secure Boot posture the persona boots under.",
+      "type": "object",
+      "required": [
+        "ovmf_variant"
+      ],
+      "properties": {
+        "custom_keyring": {
+          "description": "When `ovmf_variant == CustomPk`, path to the hwsim-generated test keyring. Must be under `$AEGIS_HWSIM_ROOT/firmware/` — validated at load time per aegis-boot#226 security-engineer constraint #2.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ovmf_variant": {
+          "description": "Which OVMF variant to boot under.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/OvmfVariant"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "Source": {
+      "description": "Provenance citation for a persona. Every persona must cite its origin so reviewers can trace fields back to a primary source. Matches the `aegis-boot compat` DB's \"verified outcomes only\" stance.",
+      "type": "object",
+      "required": [
+        "kind",
+        "ref_"
+      ],
+      "properties": {
+        "captured_at": {
+          "description": "ISO-8601 date the persona's fields were captured/verified.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "description": "Kind of citation. See `SourceKind`.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/SourceKind"
+            }
+          ]
+        },
+        "ref_": {
+          "description": "Free-form reference. URL, issue number, spec-sheet title — whatever a reviewer can use to verify the persona's claims.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "SourceKind": {
+      "description": "Kind of provenance citation. Ordered from highest to lowest confidence.",
+      "oneOf": [
+        {
+          "description": "Closed `hardware-report` GitHub issue from a real operator who ran the full flash → boot → kexec chain. Highest confidence.",
+          "type": "string",
+          "enum": [
+            "community_report"
+          ]
+        },
+        {
+          "description": "fwupd / LVFS firmware archive URL. Verified against vendor metadata.",
+          "type": "string",
+          "enum": [
+            "lvfs_catalog"
+          ]
+        },
+        {
+          "description": "Vendor-published spec sheet (Lenovo PSREF, Dell Product Support, Framework Marketplace). Lowest-confidence; use only for fields the other two don't cover.",
+          "type": "string",
+          "enum": [
+            "vendor_docs"
+          ]
+        }
+      ]
+    },
+    "Tpm": {
+      "description": "TPM emulation config. `None` variant means no TPM at all.",
+      "type": "object",
+      "required": [
+        "version"
+      ],
+      "properties": {
+        "firmware_version": {
+          "description": "TPM2 firmware version string. Optional. Use when testing firmware-version-gated behavior.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "manufacturer": {
+          "description": "TPM2 manufacturer code (IFX, NTC, AMD, STM, INTC, ...). Optional; most tests don't care. Set when validating TPM2-FW-bug-specific paths.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version": {
+          "description": "TPM version, or `\"none\"` for no TPM. swtpm emulates 1.2 and 2.0.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/TpmVersion"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "TpmVersion": {
+      "description": "TPM version to emulate.",
+      "oneOf": [
+        {
+          "description": "No TPM present.",
+          "type": "string",
+          "enum": [
+            "none"
+          ]
+        },
+        {
+          "description": "TPM 1.2 (TIS interface).",
+          "type": "string",
+          "enum": [
+            "1.2"
+          ]
+        },
+        {
+          "description": "TPM 2.0 (TIS interface).",
+          "type": "string",
+          "enum": [
+            "2.0"
+          ]
+        }
+      ]
+    }
+  }
+}

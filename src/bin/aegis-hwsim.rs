@@ -14,6 +14,7 @@ fn main() -> ExitCode {
     match args.first().map(String::as_str) {
         Some("list-personas") => run_list(&args[1..]),
         Some("validate") => run_validate(&args[1..]),
+        Some("gen-schema") => run_gen_schema(&args[1..]),
         Some("run") => {
             eprintln!("aegis-hwsim: run — not implemented yet");
             eprintln!("  Usage: aegis-hwsim run <persona> <scenario> <aegis-boot-stick.img>");
@@ -42,6 +43,7 @@ fn print_help() {
     println!("USAGE:");
     println!("  aegis-hwsim list-personas [--json]  List YAML fixtures under personas/");
     println!("  aegis-hwsim validate [--quiet]      Validate all personas against the schema");
+    println!("  aegis-hwsim gen-schema [--check]    Emit persona JSONSchema to stdout");
     println!("  aegis-hwsim run <persona> <scenario> <stick>");
     println!("                                      (not yet implemented — tracks #3)");
     println!("  aegis-hwsim --version               Print version");
@@ -232,6 +234,49 @@ fn json_escape(s: &str) -> String {
         }
     }
     out
+}
+
+/// `aegis-hwsim gen-schema` — emit the persona `JSONSchema` to stdout.
+/// With `--check <path>`, compare the generated schema against the file at
+/// `<path>` and exit 1 if they differ (CI drift-gate pattern).
+fn run_gen_schema(args: &[String]) -> ExitCode {
+    if matches!(args.first().map(String::as_str), Some("--help" | "-h")) {
+        println!("aegis-hwsim gen-schema — emit the persona JSONSchema");
+        println!();
+        println!("USAGE:");
+        println!("  aegis-hwsim gen-schema              # Print schema to stdout");
+        println!("  aegis-hwsim gen-schema --check PATH # Exit 1 if PATH differs from generated");
+        return ExitCode::SUCCESS;
+    }
+    let schema = schemars::schema_for!(aegis_hwsim::persona::Persona);
+    let Ok(rendered) = serde_json::to_string_pretty(&schema) else {
+        eprintln!("aegis-hwsim: failed to serialize schema");
+        return ExitCode::from(1);
+    };
+    let rendered = format!("{rendered}\n");
+    if let Some(idx) = args.iter().position(|a| a == "--check") {
+        let Some(path) = args.get(idx + 1) else {
+            eprintln!("aegis-hwsim gen-schema --check: missing PATH argument");
+            return ExitCode::from(2);
+        };
+        match std::fs::read_to_string(path) {
+            Ok(committed) if committed == rendered => ExitCode::SUCCESS,
+            Ok(_) => {
+                eprintln!(
+                    "aegis-hwsim: {path} is out of date. Run 'aegis-hwsim gen-schema > {path}' \
+                     and commit the result."
+                );
+                ExitCode::from(1)
+            }
+            Err(e) => {
+                eprintln!("aegis-hwsim: cannot read {path}: {e}");
+                ExitCode::from(1)
+            }
+        }
+    } else {
+        print!("{rendered}");
+        ExitCode::SUCCESS
+    }
 }
 
 /// Pretty-print a `LoadError` to stderr with operator-actionable context.

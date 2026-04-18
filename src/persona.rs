@@ -4,11 +4,12 @@
 //! No runtime logic in this module beyond `serde` derivations — the
 //! schema is the contract, nothing more.
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// Top-level persona YAML. One persona = one shipping hardware configuration.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Persona {
     /// Pins the parser to an exact schema version. Mismatched parsers refuse
@@ -65,7 +66,7 @@ pub struct Persona {
 /// Provenance citation for a persona. Every persona must cite its origin so
 /// reviewers can trace fields back to a primary source. Matches the
 /// `aegis-boot compat` DB's "verified outcomes only" stance.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Source {
     /// Kind of citation. See `SourceKind`.
@@ -79,7 +80,7 @@ pub struct Source {
 }
 
 /// Kind of provenance citation. Ordered from highest to lowest confidence.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SourceKind {
     /// Closed `hardware-report` GitHub issue from a real operator who ran
@@ -95,7 +96,7 @@ pub enum SourceKind {
 
 /// DMI fields mapped to `/sys/class/dmi/id/<field>`. Everything QEMU's
 /// `-smbios type=0/1/2/3/...` injectors can populate.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Dmi {
     /// Mapped to `/sys/class/dmi/id/sys_vendor`.
@@ -123,7 +124,7 @@ pub struct Dmi {
 }
 
 /// Secure Boot posture the persona boots under.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SecureBoot {
     /// Which OVMF variant to boot under.
@@ -136,7 +137,7 @@ pub struct SecureBoot {
 }
 
 /// OVMF firmware variant.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum OvmfVariant {
     /// MS-enrolled VARs — the most common distro-shipped state.
@@ -152,7 +153,7 @@ pub enum OvmfVariant {
 }
 
 /// TPM emulation config. `None` variant means no TPM at all.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Tpm {
     /// TPM version, or `"none"` for no TPM. swtpm emulates 1.2 and 2.0.
@@ -168,7 +169,7 @@ pub struct Tpm {
 }
 
 /// TPM version to emulate.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum TpmVersion {
     /// No TPM present.
@@ -183,7 +184,7 @@ pub enum TpmVersion {
 
 /// Kernel config for the booted kernel. `Default` leaves the initramfs
 /// kernel's lockdown mode unchanged.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Kernel {
     /// Kernel lockdown mode. `Inherit` uses the initramfs kernel's default.
@@ -193,7 +194,7 @@ pub struct Kernel {
 
 /// Kernel lockdown mode (see `Documentation/admin-guide/LSM/LoadPin.rst`
 /// and the `lockdown` LSM).
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum LockdownMode {
     /// Use the initramfs kernel's built-in default.
@@ -210,7 +211,7 @@ pub enum LockdownMode {
 /// A real-world quirk the harness can't simulate. Informational — exposed
 /// to scenarios so coverage reports can annotate "this would work here
 /// but not on real hardware because X".
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Quirk {
     /// Short grep-able tag. Must match `^[a-z0-9][a-z0-9-]*[a-z0-9]$`.
@@ -220,7 +221,7 @@ pub struct Quirk {
 }
 
 /// Per-scenario run/skip decision.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ScenarioDecision {
     /// Scenario runs against this persona.
