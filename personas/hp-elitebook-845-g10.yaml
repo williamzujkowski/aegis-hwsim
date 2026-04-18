@@ -1,0 +1,47 @@
+schema_version: 1
+id: hp-elitebook-845-g10
+vendor: HP
+display_name: "HP EliteBook 845 G10"
+year: 2023
+
+source:
+  # Placeholder citation. Do NOT ship to main until a real operator
+  # files a hardware-report on aegis-boot covering the full flash → boot
+  # → kexec chain on a physical EliteBook 845 G10. See aegis-boot
+  # CLAUDE.md and HARDWARE_COMPAT.md "verified outcomes only" policy.
+  kind: vendor_docs
+  ref_: "HP Support — EliteBook 845 G10 (placeholder — replace with community_report URL before main)"
+
+dmi:
+  sys_vendor: HP
+  # HP convention: full friendly name in product_name (no separate
+  # product_version is published in dmidecode output).
+  product_name: "HP EliteBook 845 G10 Notebook PC"
+  bios_vendor: HP
+  # HP BIOS family is Insyde-built; vendor-shipped string follows the
+  # "U73 Ver. NN.NN.NN" convention.
+  bios_version: "U73 Ver. 01.10.00"
+  bios_date: 03/05/2024
+  board_name: "8C45"
+  chassis_type: 10   # SMBIOS "Notebook"
+
+secure_boot:
+  ovmf_variant: ms_enrolled
+
+tpm:
+  version: "2.0"
+  # AMD fTPM. EliteBook 800-series with Ryzen 7040 PRO uses the
+  # PSP-resident firmware TPM, not a discrete part. Manufacturer code
+  # observed on Ryzen Pro mobile platforms.
+  manufacturer: AMD
+
+kernel:
+  lockdown: inherit
+
+quirks:
+  - tag: boot-key-f9
+    description: "Firmware boot-menu key is F9 — HP convention. rescue-tui's MOK walkthrough STEP 3/3 includes this; aegis-boot#202."
+  - tag: amd-ftpm-stuttering-pre-2024
+    description: "Pre-2024 AMD fTPM firmware exhibits PCR-extend stuttering on rapid boots (TPM2 errata). Mitigated in the firmware revision shipped here. Not reproducible in QEMU; see kernel mailing list TPM2 stutter thread for details."
+  - tag: secure-boot-default-on
+    description: "Ships with Secure Boot enabled. Compatible with ms_enrolled."

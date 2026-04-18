@@ -14,15 +14,17 @@ fn shipped_personas_load_without_error() {
     let opts = LoadOptions::default_at(&repo_root);
     let personas = load_all(&opts).unwrap_or_else(|e| panic!("load_all failed: {e}"));
     assert!(
-        personas.len() >= 3,
-        "expected ≥3 personas, got {}",
+        personas.len() >= 6,
+        "expected ≥6 personas after Phase 2, got {}",
         personas.len()
     );
-    // Sorted by id — qemu-generic-minimal is last alphabetically among
-    // the shipped set (lenovo- < framework- < qemu-) — wait, framework
-    // < lenovo alphabetically. Just check the id set as a whole.
     let ids: std::collections::HashSet<_> = personas.iter().map(|p| p.id.as_str()).collect();
+    // Phase 1 personas (#1, E1).
     assert!(ids.contains("qemu-generic-minimal"));
     assert!(ids.contains("lenovo-thinkpad-x1-carbon-gen11"));
     assert!(ids.contains("framework-laptop-12gen"));
+    // Phase 2 personas (#35).
+    assert!(ids.contains("dell-xps-13-9320"));
+    assert!(ids.contains("hp-elitebook-845-g10"));
+    assert!(ids.contains("asus-zenbook-14-oled"));
 }

@@ -1,0 +1,48 @@
+schema_version: 1
+id: asus-zenbook-14-oled
+vendor: ASUSTeK COMPUTER INC.
+display_name: "ASUS ZenBook 14 OLED (UX3405MA, Core Ultra)"
+year: 2024
+
+source:
+  # Placeholder citation. Do NOT ship to main until a real operator
+  # files a hardware-report on aegis-boot covering the full flash → boot
+  # → kexec chain on a physical ZenBook 14 OLED Core Ultra unit. See
+  # aegis-boot CLAUDE.md and HARDWARE_COMPAT.md "verified outcomes only"
+  # policy.
+  kind: vendor_docs
+  ref_: "ASUS Marketplace — ZenBook 14 OLED UX3405MA (placeholder — replace with community_report URL before main)"
+
+dmi:
+  # ASUS sys_vendor is the verbose form (preserved as shipped, including
+  # the trailing period).
+  sys_vendor: "ASUSTeK COMPUTER INC."
+  product_name: "ZenBook UX3405MA_UX3405MA"
+  product_version: "1.0"
+  # ASUS BIOS is built on AMI Aptio; vendor-shipped string includes both
+  # the AMI core version and the ASUS revision.
+  bios_vendor: "American Megatrends International, LLC."
+  bios_version: "UX3405MA.305"
+  bios_date: 04/12/2024
+  board_name: "UX3405MA"
+  chassis_type: 10   # SMBIOS "Notebook"
+
+secure_boot:
+  ovmf_variant: ms_enrolled
+
+tpm:
+  version: "2.0"
+  # Intel PTT — Core Ultra (Meteor Lake) ships with PTT enabled by
+  # default. Manufacturer code matches Intel-managed firmware TPM.
+  manufacturer: INTC
+
+kernel:
+  lockdown: inherit
+
+quirks:
+  - tag: boot-key-f8
+    description: "Firmware boot-menu key is F8 — ASUS convention. Differs from Lenovo/Dell F12 and HP F9. rescue-tui's MOK walkthrough STEP 3/3 already covers this per aegis-boot#202."
+  - tag: ami-aptio-secboot-strict
+    description: "AMI Aptio enforces strict secure-boot variable layout. Custom-PK enrollment via OVMF setup-mode is supported but the operator must NOT skip the PK enrollment step — Aptio refuses to boot if KEK is enrolled before PK. Not reproducible in QEMU at the AMI level; OVMF setup-mode is more permissive."
+  - tag: secure-boot-default-on
+    description: "Ships with Secure Boot enabled. Compatible with ms_enrolled."

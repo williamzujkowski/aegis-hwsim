@@ -1,0 +1,46 @@
+schema_version: 1
+id: dell-xps-13-9320
+vendor: "Dell Inc."
+display_name: "Dell XPS 13 9320 (Plus)"
+year: 2022
+
+source:
+  # Placeholder citation. Do NOT ship to main until a real operator
+  # files a hardware-report on aegis-boot covering the full flash → boot
+  # → kexec chain on a physical XPS 13 9320. See aegis-boot CLAUDE.md
+  # and HARDWARE_COMPAT.md "verified outcomes only" policy.
+  kind: vendor_docs
+  ref_: "Dell Product Support — XPS 13 9320 Plus (placeholder — replace with community_report URL before main)"
+
+dmi:
+  # Dell convention: friendly name in product_name, sys_vendor as
+  # 'Dell Inc.' (the trailing period is part of the value as shipped).
+  sys_vendor: "Dell Inc."
+  product_name: "XPS 13 9320"
+  bios_vendor: "Dell Inc."
+  # Dell BIOS revision; format mirrors what dmidecode reports on shipping
+  # XPS units (vendor-shipped string, not synthetic).
+  bios_version: "1.18.0"
+  bios_date: 02/20/2024
+  board_name: "0Y7CW0"
+  chassis_type: 10   # SMBIOS "Notebook"
+
+secure_boot:
+  ovmf_variant: ms_enrolled
+
+tpm:
+  version: "2.0"
+  # Intel PTT (firmware TPM in the Management Engine), not a discrete
+  # TPM. Manufacturer code observed on Tiger/Alder/Raptor Lake systems.
+  manufacturer: INTC
+
+kernel:
+  lockdown: inherit
+
+quirks:
+  - tag: boot-key-f12
+    description: "Firmware boot-menu key is F12. rescue-tui's MOK walkthrough STEP 3/3 already covers this — Dell shares the Lenovo convention."
+  - tag: thunderbolt-wakes-from-sleep
+    description: "Plugging a Thunderbolt USB stick into a sleeping unit triggers a wake-and-enumerate cycle that aegis-boot's drive-detect can race. Operator should plug before powering on. Not reproducible in QEMU."
+  - tag: secure-boot-default-on
+    description: "Ships with Secure Boot enabled. Compatible with the ms_enrolled posture; no operator action needed before flashing."
