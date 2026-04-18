@@ -4,9 +4,23 @@ All notable changes to aegis-hwsim. Mirrors the [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+_Nothing yet. Work since 0.0.2 lands here._
+
+## [0.0.2] — 2026-04-18
+
+First post-scaffolding marker. Phase 1 + Phase 2 functionally complete: 11 personas covering all 4 OVMF variants and all 3 TPM versions, 2 scenarios (one of which runs end-to-end on every CI PR against real QEMU+OVMF), coverage-grid artifact published per PR, doctor + contributor docs + architecture overview shipped, family-convention `--json` sweep complete on every read-mostly subcommand. 113 tests including 60k random-input fuzz inputs per CI run.
+
 ### Added
 
-- Phase 1 + Phase 2 in one cohesive push:
+- **Family-convention `--json` sweep** ([#52](https://github.com/williamzujkowski/aegis-hwsim/pull/52)) — `aegis-hwsim --version --json`, `doctor --json`, `list-scenarios --json` all emit `schema_version=1` envelopes. Matches [aegis-boot PR #191](https://github.com/williamzujkowski/aegis-boot/pull/191) + [#205](https://github.com/williamzujkowski/aegis-boot/pull/205) so scripted consumers parse uniformly across the family. `list-personas --json` already shipped (PR #14); `coverage-grid --format json` already shipped (PR #40); this finishes the sweep.
+- **`docs/architecture.md`** ([#53](https://github.com/williamzujkowski/aegis-hwsim/pull/53)) — module dependency graph, pure-then-impure layering pattern table, why Skip is first-class, trust-boundary diagram with 4 enforcement rules, 9-step Invocation lifecycle, three constraints that drove the design. CONTRIBUTING.md links it.
+- **Research index refresh** ([#49](https://github.com/williamzujkowski/aegis-hwsim/pull/49)) — new `docs/research/arxiv-papers.md` (5 verified arXiv/DOI entries: UEFI SoK 2311.03809, ARES 2024 boot integrity 10.1145/3664476.3670910, SEV-SNP e-vTPM 2303.16463, UEFI memory forensics 2501.16962, FUZZUER NDSS 2025); new `docs/research/recent-projects.md` (2025/2026 delta-scan: anpep/qemu-tpm-measurement, intel/tsffs, fwupd SBAT plugin, systemd-ukify ecosystem). Roadmap-implications note surfaces two future scenarios tracked as [#50](https://github.com/williamzujkowski/aegis-hwsim/issues/50) + [#51](https://github.com/williamzujkowski/aegis-hwsim/issues/51).
+
+### Changed
+
+- **`scenarios::common::binary_on_path`** ([#49](https://github.com/williamzujkowski/aegis-hwsim/pull/49)) — DRY extraction; both scenarios now import the shared helper.
+
+### Initial Phase 1 + Phase 2 push
   - **Persona library** (E1): YAML schema with `serde` derives, `load_all()` with 5 guards (placeholder rejection, id/filename drift, quirk-tag regex, custom-keyring path-boundary, parse). 11 personas shipped — qemu-generic-minimal, qemu-smoke-no-tpm (harness self-test), qemu-disabled-sb (covers OvmfVariant::Disabled), qemu-setup-mode-sb (covers SetupMode), qemu-custom-pk-sb (covers CustomPk), lenovo-thinkpad-x1-carbon-gen11, lenovo-thinkpad-t440p-tpm12 (covers tpm-tis device path), framework-laptop-12gen, dell-xps-13-9320, hp-elitebook-845-g10, asus-zenbook-14-oled. **Full OVMF variant matrix coverage** (4/4) + both TPM versions + None.
   - **Relative `custom_keyring` resolution**: loader + `ovmf::resolve` resolve relative keyring paths against `firmware_root` before canonicalizing. Absolute paths stay as-is (preserves the existing /etc/passwd-traversal negative test). Documented in `firmware/test-keyring/README.md` + `docs/persona-authoring.md`.
   - **JSONSchema export** (E1.5): `aegis-hwsim gen-schema [--check PATH]` emits `schemas/persona.schema.json`. CI drift gate prevents source/schema skew.
