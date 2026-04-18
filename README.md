@@ -65,7 +65,11 @@ git clone https://github.com/williamzujkowski/aegis-hwsim
 cd aegis-hwsim
 cargo build --release
 
-# Inventory the shipped persona library (7 entries today)
+# Health-check the host first — surfaces all missing apt packages in
+# one pass instead of one-at-a-time via scenario Skip messages.
+target/release/aegis-hwsim doctor
+
+# Inventory the shipped persona library
 target/release/aegis-hwsim list-personas
 
 # List registered scenarios
@@ -74,6 +78,11 @@ target/release/aegis-hwsim list-scenarios
 # Smoke-test the harness pipeline (no signed stick needed)
 target/release/aegis-hwsim run qemu-smoke-no-tpm qemu-boots-ovmf /tmp/dummy.img
 # Expected: PASS within ~2s, OVMF's BdsDxe message captured to work/.../serial.log
+
+# Emit the persona × scenario coverage matrix
+target/release/aegis-hwsim coverage-grid               # Markdown
+target/release/aegis-hwsim coverage-grid --format json # schema_version=1 JSON
+target/release/aegis-hwsim coverage-grid --dry-run     # fast: every cell SKIP
 
 # End-to-end against a real signed aegis-boot stick
 # (build the stick on a Linux machine via aegis-boot's mkusb.sh first)
@@ -92,7 +101,7 @@ target/release/aegis-hwsim run \
 | 2  | Usage error |
 | 77 | Skip — prerequisites missing (operator-readable reason printed) |
 
-### Persona library (7 entries today)
+### Persona library (8 entries today)
 
 | ID | TPM | OVMF | Notes |
 |----|-----|------|-------|
@@ -100,18 +109,26 @@ target/release/aegis-hwsim run \
 | `qemu-smoke-no-tpm` | none | ms_enrolled | Harness self-test only |
 | `framework-laptop-12gen` | 2.0 | ms_enrolled | Phase 1 |
 | `lenovo-thinkpad-x1-carbon-gen11` | 2.0 | ms_enrolled | Phase 1 |
+| `lenovo-thinkpad-t440p-tpm12` | 1.2 (ST33) | ms_enrolled | Exercises tpm-tis device path |
 | `dell-xps-13-9320` | 2.0 (PTT) | ms_enrolled | Phase 2 |
 | `hp-elitebook-845-g10` | 2.0 (fTPM) | ms_enrolled | Phase 2 |
 | `asus-zenbook-14-oled` | 2.0 (PTT) | ms_enrolled | Phase 2 |
 
-All vendor-docs source citations are flagged PLACEHOLDER pending a real community hardware-report. See `personas/*.yaml` for the per-persona quirks captured (boot-key F8/F9/F12, vendor-specific MOK Manager rendering, AMD fTPM stuttering errata, etc.).
+All vendor-docs source citations are flagged PLACEHOLDER pending a real community hardware-report. See `personas/*.yaml` for the per-persona quirks captured (boot-key F8/F9/F12, vendor-specific MOK Manager rendering, AMD fTPM stuttering errata, TPM 1.2 SHA-1-only PCR bank, etc.).
 
 ### Scenarios (2 shipped today)
 
-| Name | Asserts | Needs |
-|------|---------|-------|
-| `qemu-boots-ovmf` | OVMF emits `BdsDxe` boot-selector marker | qemu + ovmf |
-| `signed-boot-ubuntu` | Full chain: shim → grub → kernel → kexec | qemu + ovmf + swtpm + signed `aegis-boot.img` |
+| Name | Asserts | Needs | Runs on CI? |
+|------|---------|-------|---|
+| `qemu-boots-ovmf` | OVMF emits `BdsDxe` boot-selector marker | qemu + ovmf | Yes — runs against `qemu-smoke-no-tpm` every PR |
+| `signed-boot-ubuntu` | Full chain: shim → grub → kernel → kexec | qemu + ovmf + swtpm + signed `aegis-boot.img` | Skipped on CI (no signed stick artifact yet) |
+
+Adding a scenario? See [docs/scenario-authoring.md](docs/scenario-authoring.md). Adding a persona? See [docs/persona-authoring.md](docs/persona-authoring.md). Either way, start with [CONTRIBUTING.md](CONTRIBUTING.md).
+
+### CI artifacts published per PR
+
+- **`coverage-grid`** — markdown + JSON of the persona × scenario matrix. Reviewers click the artifact in the GitHub Actions run summary to see the matrix shape for that change.
+- The smoke scenario above runs against real QEMU+OVMF on the Ubuntu runner — proof-of-life that the harness wiring is sound.
 
 ## Build / dev requirements
 
