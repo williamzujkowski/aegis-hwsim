@@ -12,3 +12,4 @@ pub mod loader;
 pub mod ovmf;
 pub mod persona;
 pub mod smbios;
+pub mod swtpm;
