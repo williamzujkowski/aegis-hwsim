@@ -14,8 +14,8 @@ fn shipped_personas_load_without_error() {
     let opts = LoadOptions::default_at(&repo_root);
     let personas = load_all(&opts).unwrap_or_else(|e| panic!("load_all failed: {e}"));
     assert!(
-        personas.len() >= 9,
-        "expected ≥9 personas (Phase 2 + smoke + TPM 1.2 + disabled-SB), got {}",
+        personas.len() >= 10,
+        "expected ≥10 personas (Phase 2 + smoke + TPM 1.2 + disabled-SB + setup-mode), got {}",
         personas.len()
     );
     let ids: std::collections::HashSet<_> = personas.iter().map(|p| p.id.as_str()).collect();
@@ -31,7 +31,12 @@ fn shipped_personas_load_without_error() {
     assert!(ids.contains("qemu-smoke-no-tpm"));
     // TPM 1.2 coverage — exercises the qemu::Invocation tpm-tis path.
     assert!(ids.contains("lenovo-thinkpad-t440p-tpm12"));
-    // Disabled-SB diagnostic — exercises the only remaining
-    // OvmfVariant branch (Disabled, non-secboot CODE).
+    // Disabled-SB diagnostic — exercises the Disabled OvmfVariant
+    // branch (non-secboot CODE).
     assert!(ids.contains("qemu-disabled-sb"));
+    // Setup-mode diagnostic — exercises the SetupMode branch
+    // (secboot CODE + blank VARS, no PK enrolled). Together with
+    // qemu-disabled-sb + the 8 ms_enrolled personas, the matrix now
+    // hits 3/4 OvmfVariants. Custom-PK still requires a test keyring.
+    assert!(ids.contains("qemu-setup-mode-sb"));
 }
