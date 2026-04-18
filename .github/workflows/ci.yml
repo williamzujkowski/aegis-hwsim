@@ -25,3 +25,19 @@ jobs:
       - run: cargo test --locked
       - name: Check JSONSchema is in sync with source
         run: cargo run --locked -q --bin aegis-hwsim -- gen-schema --check schemas/persona.schema.json
+      - name: Generate coverage-grid artifact
+        # Live grid (not --dry-run) — actually runs each cell. The
+        # smoke scenario will Pass against qemu-smoke-no-tpm; everything
+        # else Skips with a specific reason. Reviewers click the
+        # artifact to see the matrix shape for this PR.
+        run: |
+          mkdir -p artifacts
+          cargo run --locked -q --bin aegis-hwsim -- coverage-grid > artifacts/coverage-grid.md
+          cargo run --locked -q --bin aegis-hwsim -- coverage-grid --format json > artifacts/coverage-grid.json
+      - name: Upload coverage-grid artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-grid
+          path: artifacts/coverage-grid.*
+          retention-days: 30
+          if-no-files-found: error

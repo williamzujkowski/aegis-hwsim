@@ -17,6 +17,7 @@ fn main() -> ExitCode {
         Some("gen-schema") => run_gen_schema(&args[1..]),
         Some("run") => run_scenario(&args[1..]),
         Some("list-scenarios") => run_list_scenarios(&args[1..]),
+        Some("coverage-grid") => run_coverage_grid(&args[1..]),
         Some("-h" | "--help" | "help") | None => {
             print_help();
             ExitCode::SUCCESS
@@ -43,6 +44,8 @@ fn print_help() {
     println!("  aegis-hwsim list-scenarios          List registered test scenarios");
     println!("  aegis-hwsim run <persona> <scenario> <stick.img> [--firmware-root DIR]");
     println!("                                      Run a scenario against a persona+stick");
+    println!("  aegis-hwsim coverage-grid [--format json|markdown] [--dry-run]");
+    println!("                                      Emit persona × scenario grid");
     println!("  aegis-hwsim --version               Print version");
     println!("  aegis-hwsim --help                  This message");
     println!();
@@ -274,6 +277,50 @@ fn run_gen_schema(args: &[String]) -> ExitCode {
         print!("{rendered}");
         ExitCode::SUCCESS
     }
+}
+
+/// `aegis-hwsim coverage-grid` — iterate personas × scenarios and emit
+/// the grid in the requested format. With `--dry-run`, every cell
+/// records `Skip { reason: "dry-run" }` without invoking the
+/// scenario; useful for fast CI artifacts.
+fn run_coverage_grid(args: &[String]) -> ExitCode {
+    if matches!(args.first().map(String::as_str), Some("--help" | "-h")) {
+        println!("aegis-hwsim coverage-grid — emit persona × scenario matrix");
+        println!();
+        println!("USAGE:");
+        println!("  aegis-hwsim coverage-grid [--format json|markdown] [--dry-run]");
+        println!();
+        println!("  --format markdown  Human-readable table (default)");
+        println!("  --format json      schema_version=1 envelope");
+        println!("  --dry-run          Skip every cell with reason='dry-run'");
+        return ExitCode::SUCCESS;
+    }
+    let format = if args.iter().any(|a| a == "json") {
+        aegis_hwsim::coverage_grid::OutputFormat::Json
+    } else {
+        aegis_hwsim::coverage_grid::OutputFormat::Markdown
+    };
+    let dry_run = args.iter().any(|a| a == "--dry-run");
+
+    let personas = match load_or_report() {
+        Ok(p) => p,
+        Err(code) => return ExitCode::from(code),
+    };
+    let registry = aegis_hwsim::scenario::Registry::default_set();
+
+    let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let cfg = aegis_hwsim::coverage_grid::GridConfig {
+        work_root: cwd.join("work").join("coverage-grid"),
+        firmware_root: PathBuf::from("/usr/share/OVMF"),
+        stick: PathBuf::from("/no/stick/configured"),
+        dry_run,
+    };
+    let cells = aegis_hwsim::coverage_grid::compute_grid(&personas, &registry, &cfg);
+    print!(
+        "{}",
+        aegis_hwsim::coverage_grid::render(&cells, &registry, format)
+    );
+    ExitCode::SUCCESS
 }
 
 /// `aegis-hwsim list-scenarios` — print the registered scenario names

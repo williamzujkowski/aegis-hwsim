@@ -59,15 +59,15 @@ impl Scenario for QemuBootsOvmf {
 
         // The persona MUST opt out of TPM. The smoke scenario is the
         // harness self-test; mixing in swtpm would just expand the
-        // failure surface without adding signal. Reject up front so the
-        // operator gets a clear "use qemu-smoke-no-tpm" message.
+        // failure surface without adding signal. Skip (not Fail) when
+        // a TPM persona is handed in so the coverage grid renders this
+        // as N/A — most personas legitimately request TPM, and that
+        // shouldn't pollute the grid with FAIL/ERROR noise.
         if !matches!(ctx.persona.tpm.version, crate::persona::TpmVersion::None) {
-            return Err(ScenarioError::UnsupportedPersona {
-                scenario: "qemu-boots-ovmf",
-                persona: ctx.persona.id.clone(),
+            return Ok(ScenarioResult::Skip {
                 reason: format!(
-                    "qemu-boots-ovmf is a no-TPM smoke; persona {} requests TPM {:?}. \
-                     Use the qemu-smoke-no-tpm persona for harness self-test.",
+                    "scenario is no-TPM only; persona {} requests TPM {:?}. \
+                     The qemu-smoke-no-tpm persona exercises this scenario.",
                     ctx.persona.id, ctx.persona.tpm.version
                 ),
             });
@@ -186,7 +186,7 @@ tpm:
     }
 
     #[test]
-    fn rejects_persona_with_tpm() {
+    fn skips_persona_with_tpm() {
         let s = QemuBootsOvmf;
         let mut p = no_tpm_persona();
         p.tpm.version = crate::persona::TpmVersion::Tpm20;
@@ -196,10 +196,13 @@ tpm:
             work_dir: tempfile::tempdir().unwrap().path().to_path_buf(),
             firmware_root: PathBuf::from("/usr/share/OVMF"),
         };
-        let err = s.run(&ctx).unwrap_err();
-        assert!(
-            matches!(err, ScenarioError::UnsupportedPersona { .. }),
-            "expected UnsupportedPersona, got {err:?}"
-        );
+        let result = s.run(&ctx).unwrap();
+        match result {
+            ScenarioResult::Skip { reason } => {
+                assert!(reason.contains("no-TPM only"), "got reason: {reason}");
+                assert!(reason.contains("qemu-smoke-no-tpm"));
+            }
+            other => panic!("expected Skip, got {other:?}"),
+        }
     }
 }
