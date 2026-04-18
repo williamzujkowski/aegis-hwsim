@@ -1,0 +1,57 @@
+schema_version: 1
+id: lenovo-thinkpad-t440p-tpm12
+vendor: LENOVO
+display_name: "Lenovo ThinkPad T440p (Haswell, TPM 1.2)"
+year: 2014
+
+source:
+  # Placeholder citation. Do NOT ship to main until a real operator
+  # files a hardware-report on aegis-boot covering the full flash → boot
+  # → kexec chain on a physical T440p with TPM 1.2 enabled. See
+  # aegis-boot CLAUDE.md and HARDWARE_COMPAT.md "verified outcomes only"
+  # policy.
+  #
+  # Why this persona: every other persona in the library uses TPM 2.0.
+  # The ThinkPad T440p era (2014-2015) shipped with discrete TPM 1.2
+  # parts (ST33 / Atmel) and is still in active service for low-budget
+  # rescue-stick operators. Without a 1.2 persona, the qemu::Invocation
+  # builder's tpm-tis device path is exercised only by unit tests, not
+  # by the matrix.
+  kind: vendor_docs
+  ref_: "Lenovo PSREF ThinkPad T440p Type 20AN/20AQ (placeholder — replace with community_report URL before main)"
+
+dmi:
+  sys_vendor: LENOVO
+  product_name: 20AN0069US
+  product_version: "ThinkPad T440p"
+  bios_vendor: LENOVO
+  # T440p firmware family: GLET; final-shipped 2.43 cited in many
+  # community reports, but operators with newer "modded" / Coreboot
+  # alternatives also exist.
+  bios_version: "GLET98WW (2.43)"
+  bios_date: 06/15/2017
+  board_name: 20AN0069US
+  chassis_type: 10   # SMBIOS "Notebook"
+
+secure_boot:
+  ovmf_variant: ms_enrolled
+
+tpm:
+  # Discrete TPM 1.2 (ST33 — most common shipped option; Atmel was an
+  # alternate). qemu::Invocation routes this through `tpm-tis` (TIS
+  # interface) rather than `tpm-crb` (CRB, 2.0-only).
+  version: "1.2"
+  manufacturer: STM     # STMicroelectronics ST33 family
+
+kernel:
+  lockdown: inherit
+
+quirks:
+  - tag: tpm-tis-not-crb
+    description: "TPM 1.2 uses the TIS interface (ISA-style, address 0xFED40000). qemu-system-x86_64 device is `tpm-tis`, not `tpm-crb`. swtpm needs to be invoked WITHOUT `--tpm2`."
+  - tag: boot-key-f12
+    description: "Firmware boot-menu key is F12 — Lenovo convention since the original ThinkPad. rescue-tui MOK walkthrough STEP 3/3 covers this."
+  - tag: tpm-1-2-attestation-narrow
+    description: "TPM 1.2 PCR bank is SHA-1 only (no SHA-256/SHA-384 like 2.0). Any attestation-roundtrip scenario must select the SHA-1 bank explicitly when comparing PCR extends."
+  - tag: secure-boot-default-on
+    description: "T440p ships with Secure Boot enabled by default since the original Win8 SKU. Compatible with ms_enrolled."
