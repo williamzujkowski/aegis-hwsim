@@ -12,5 +12,6 @@ pub mod loader;
 pub mod ovmf;
 pub mod persona;
 pub mod qemu;
+pub mod serial;
 pub mod smbios;
 pub mod swtpm;
