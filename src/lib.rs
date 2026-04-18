@@ -11,5 +11,6 @@
 pub mod loader;
 pub mod ovmf;
 pub mod persona;
+pub mod qemu;
 pub mod smbios;
 pub mod swtpm;
