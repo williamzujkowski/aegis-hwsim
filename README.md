@@ -1,6 +1,6 @@
 # aegis-hwsim
 
-**Status:** scaffolding phase. Tracks [aegis-boot#226](https://github.com/williamzujkowski/aegis-boot/issues/226).
+**Status:** Phase 1 working. CI exercises the full QEMU+OVMF+swtpm pipeline against the persona library on every PR via the `qemu-boots-ovmf` smoke scenario. Tracks [aegis-boot#226](https://github.com/williamzujkowski/aegis-boot/issues/226).
 
 A test harness that parameterizes **QEMU + OVMF + swtpm** over a matrix of **hardware personas** — YAML fixtures matching real shipping laptops/workstations — so [aegis-boot](https://github.com/williamzujkowski/aegis-boot)'s UEFI-Secure-Boot-preserving USB-rescue-stick flow can be validated across ~100 configurations without waiting on physical Framework / ThinkPad / Dell / HP / ASUS hardware.
 
@@ -60,13 +60,58 @@ See [aegis-boot#51](https://github.com/williamzujkowski/aegis-boot/issues/51), [
 
 ## Quick start
 
-Scaffolding is in progress; this section will be filled in as the MVP lands.
-
 ```bash
-# (Planned — not yet implemented)
-cargo install --path .
-aegis-hwsim run qemu-generic-minimal signed-boot-ubuntu path/to/aegis-boot.img
+git clone https://github.com/williamzujkowski/aegis-hwsim
+cd aegis-hwsim
+cargo build --release
+
+# Inventory the shipped persona library (7 entries today)
+target/release/aegis-hwsim list-personas
+
+# List registered scenarios
+target/release/aegis-hwsim list-scenarios
+
+# Smoke-test the harness pipeline (no signed stick needed)
+target/release/aegis-hwsim run qemu-smoke-no-tpm qemu-boots-ovmf /tmp/dummy.img
+# Expected: PASS within ~2s, OVMF's BdsDxe message captured to work/.../serial.log
+
+# End-to-end against a real signed aegis-boot stick
+# (build the stick on a Linux machine via aegis-boot's mkusb.sh first)
+target/release/aegis-hwsim run \
+  lenovo-thinkpad-x1-carbon-gen11 \
+  signed-boot-ubuntu \
+  /path/to/aegis-boot.img
 ```
+
+### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| 0  | Pass — every assertion held |
+| 1  | Fail — at least one assertion missed, or runner-level error |
+| 2  | Usage error |
+| 77 | Skip — prerequisites missing (operator-readable reason printed) |
+
+### Persona library (7 entries today)
+
+| ID | TPM | OVMF | Notes |
+|----|-----|------|-------|
+| `qemu-generic-minimal` | 2.0 | ms_enrolled | Reference persona |
+| `qemu-smoke-no-tpm` | none | ms_enrolled | Harness self-test only |
+| `framework-laptop-12gen` | 2.0 | ms_enrolled | Phase 1 |
+| `lenovo-thinkpad-x1-carbon-gen11` | 2.0 | ms_enrolled | Phase 1 |
+| `dell-xps-13-9320` | 2.0 (PTT) | ms_enrolled | Phase 2 |
+| `hp-elitebook-845-g10` | 2.0 (fTPM) | ms_enrolled | Phase 2 |
+| `asus-zenbook-14-oled` | 2.0 (PTT) | ms_enrolled | Phase 2 |
+
+All vendor-docs source citations are flagged PLACEHOLDER pending a real community hardware-report. See `personas/*.yaml` for the per-persona quirks captured (boot-key F8/F9/F12, vendor-specific MOK Manager rendering, AMD fTPM stuttering errata, etc.).
+
+### Scenarios (2 shipped today)
+
+| Name | Asserts | Needs |
+|------|---------|-------|
+| `qemu-boots-ovmf` | OVMF emits `BdsDxe` boot-selector marker | qemu + ovmf |
+| `signed-boot-ubuntu` | Full chain: shim → grub → kernel → kexec | qemu + ovmf + swtpm + signed `aegis-boot.img` |
 
 ## Build / dev requirements
 
