@@ -334,11 +334,17 @@ fn run_coverage_grid(args: &[String]) -> ExitCode {
         println!("aegis-hwsim coverage-grid — emit persona × scenario matrix");
         println!();
         println!("USAGE:");
-        println!("  aegis-hwsim coverage-grid [--format json|markdown] [--dry-run]");
+        println!(
+            "  aegis-hwsim coverage-grid [--format json|markdown] [--dry-run] \\\n\
+             \x20             [--stick PATH] [--firmware-root DIR]"
+        );
         println!();
-        println!("  --format markdown  Human-readable table (default)");
-        println!("  --format json      schema_version=1 envelope");
-        println!("  --dry-run          Skip every cell with reason='dry-run'");
+        println!("  --format markdown      Human-readable table (default)");
+        println!("  --format json          schema_version=1 envelope");
+        println!("  --dry-run              Skip every cell with reason='dry-run'");
+        println!("  --stick PATH           Stick image to use for stick-needing scenarios.");
+        println!("                         Falls back to AEGIS_HWSIM_STICK env var.");
+        println!("  --firmware-root DIR    Override OVMF dir (default: /usr/share/OVMF)");
         return ExitCode::SUCCESS;
     }
     let format = if args.iter().any(|a| a == "json") {
@@ -348,17 +354,36 @@ fn run_coverage_grid(args: &[String]) -> ExitCode {
     };
     let dry_run = args.iter().any(|a| a == "--dry-run");
 
+    let stick = args
+        .iter()
+        .position(|a| a == "--stick")
+        .and_then(|i| args.get(i + 1))
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("AEGIS_HWSIM_STICK").map(PathBuf::from))
+        .unwrap_or_else(|| PathBuf::from("/no/stick/configured"));
+
+    let firmware_root = args
+        .iter()
+        .position(|a| a == "--firmware-root")
+        .and_then(|i| args.get(i + 1))
+        .map_or_else(|| PathBuf::from("/usr/share/OVMF"), PathBuf::from);
+
     let personas = match load_or_report() {
         Ok(p) => p,
         Err(code) => return ExitCode::from(code),
     };
     let registry = aegis_hwsim::scenario::Registry::default_set();
 
-    let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    // Work dirs under /tmp rather than cwd: the Unix socket path
+    // (Linux limit 108 chars) caps how deep we can nest. cwd-based
+    // paths overflow on long persona+scenario combinations
+    // (lenovo-thinkpad-x1-carbon-gen11__signed-boot-ubuntu →
+    // 121-char swtpm.sock path → "UnioIO socket is too long" + cell
+    // FAIL). /tmp/ahwsim-cov keeps the prefix to ~17 chars.
     let cfg = aegis_hwsim::coverage_grid::GridConfig {
-        work_root: cwd.join("work").join("coverage-grid"),
-        firmware_root: PathBuf::from("/usr/share/OVMF"),
-        stick: PathBuf::from("/no/stick/configured"),
+        work_root: PathBuf::from("/tmp/ahwsim-cov"),
+        firmware_root,
+        stick,
         dry_run,
     };
     let cells = aegis_hwsim::coverage_grid::compute_grid(&personas, &registry, &cfg);
