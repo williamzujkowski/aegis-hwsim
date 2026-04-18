@@ -15,12 +15,8 @@ fn main() -> ExitCode {
         Some("list-personas") => run_list(&args[1..]),
         Some("validate") => run_validate(&args[1..]),
         Some("gen-schema") => run_gen_schema(&args[1..]),
-        Some("run") => {
-            eprintln!("aegis-hwsim: run — not implemented yet");
-            eprintln!("  Usage: aegis-hwsim run <persona> <scenario> <aegis-boot-stick.img>");
-            eprintln!("  Track: https://github.com/williamzujkowski/aegis-hwsim/issues/3");
-            ExitCode::from(3)
-        }
+        Some("run") => run_scenario(&args[1..]),
+        Some("list-scenarios") => run_list_scenarios(&args[1..]),
         Some("-h" | "--help" | "help") | None => {
             print_help();
             ExitCode::SUCCESS
@@ -44,8 +40,9 @@ fn print_help() {
     println!("  aegis-hwsim list-personas [--json]  List YAML fixtures under personas/");
     println!("  aegis-hwsim validate [--quiet]      Validate all personas against the schema");
     println!("  aegis-hwsim gen-schema [--check]    Emit persona JSONSchema to stdout");
-    println!("  aegis-hwsim run <persona> <scenario> <stick>");
-    println!("                                      (not yet implemented — tracks #3)");
+    println!("  aegis-hwsim list-scenarios          List registered test scenarios");
+    println!("  aegis-hwsim run <persona> <scenario> <stick.img> [--firmware-root DIR]");
+    println!("                                      Run a scenario against a persona+stick");
     println!("  aegis-hwsim --version               Print version");
     println!("  aegis-hwsim --help                  This message");
     println!();
@@ -276,6 +273,176 @@ fn run_gen_schema(args: &[String]) -> ExitCode {
     } else {
         print!("{rendered}");
         ExitCode::SUCCESS
+    }
+}
+
+/// `aegis-hwsim list-scenarios` — print the registered scenario names
+/// + descriptions. Read-only, no I/O beyond the registry init.
+fn run_list_scenarios(args: &[String]) -> ExitCode {
+    if matches!(args.first().map(String::as_str), Some("--help" | "-h")) {
+        println!("aegis-hwsim list-scenarios — show registered test scenarios");
+        println!();
+        println!("USAGE: aegis-hwsim list-scenarios");
+        return ExitCode::SUCCESS;
+    }
+    let registry = aegis_hwsim::scenario::Registry::default_set();
+    if registry.is_empty() {
+        println!("(no scenarios registered)");
+        return ExitCode::SUCCESS;
+    }
+    println!("{:<28} DESCRIPTION", "NAME");
+    for (name, desc) in registry.iter() {
+        println!("{name:<28} {desc}");
+    }
+    println!();
+    println!("{} scenario(s).", registry.len());
+    ExitCode::SUCCESS
+}
+
+/// Parsed argv for `run_scenario`. Owned by the caller; lifetimes
+/// follow the input slice.
+struct RunArgs<'a> {
+    persona_id: &'a str,
+    scenario_name: &'a str,
+    stick: PathBuf,
+    firmware_root: Option<PathBuf>,
+    work_dir: Option<PathBuf>,
+}
+
+/// Tiny argv parser for `run`. Returns the parsed inputs or a typed
+/// exit code (2 = usage error). Extracted from `run_scenario` to keep
+/// the runner under the 100-line clippy lint.
+fn parse_run_args(args: &[String]) -> Result<RunArgs<'_>, u8> {
+    let mut positional: Vec<&str> = Vec::new();
+    let mut firmware_root: Option<PathBuf> = None;
+    let mut work_dir: Option<PathBuf> = None;
+    let mut i = 0;
+    while i < args.len() {
+        let a = &args[i];
+        match a.as_str() {
+            "--firmware-root" => {
+                i += 1;
+                let Some(v) = args.get(i) else {
+                    eprintln!("aegis-hwsim run: --firmware-root requires a path");
+                    return Err(2);
+                };
+                firmware_root = Some(PathBuf::from(v));
+            }
+            "--work-dir" => {
+                i += 1;
+                let Some(v) = args.get(i) else {
+                    eprintln!("aegis-hwsim run: --work-dir requires a path");
+                    return Err(2);
+                };
+                work_dir = Some(PathBuf::from(v));
+            }
+            arg if arg.starts_with("--") => {
+                eprintln!("aegis-hwsim run: unknown option '{arg}'");
+                return Err(2);
+            }
+            other => positional.push(other),
+        }
+        i += 1;
+    }
+    if positional.len() != 3 {
+        eprintln!(
+            "aegis-hwsim run: expected 3 positional args, got {}",
+            positional.len()
+        );
+        eprintln!("Usage: aegis-hwsim run <persona-id> <scenario-name> <stick.img>");
+        return Err(2);
+    }
+    Ok(RunArgs {
+        persona_id: positional[0],
+        scenario_name: positional[1],
+        stick: PathBuf::from(positional[2]),
+        firmware_root,
+        work_dir,
+    })
+}
+
+/// `aegis-hwsim run <persona> <scenario> <stick> [--firmware-root DIR]`
+/// — load the persona library, look up the scenario by name, validate
+/// inputs, run, and print a one-line PASS/FAIL/SKIP verdict.
+///
+/// Exit codes: 0 = Pass, 1 = Fail (asserted) or runner error, 2 = usage,
+/// 77 = Skip (sysexits-style `EX_NOPERM` repurposed as "skipped").
+fn run_scenario(args: &[String]) -> ExitCode {
+    if args.is_empty() || matches!(args.first().map(String::as_str), Some("--help" | "-h")) {
+        println!("aegis-hwsim run — execute a scenario against a persona + stick");
+        println!();
+        println!("USAGE:");
+        println!("  aegis-hwsim run <persona-id> <scenario-name> <stick.img> \\");
+        println!("    [--firmware-root DIR] [--work-dir DIR]");
+        println!();
+        println!("  --firmware-root DIR  Override OVMF dir (default: /usr/share/OVMF)");
+        println!("  --work-dir DIR       Per-run work dir (default: ./work/<run-id>)");
+        return ExitCode::SUCCESS;
+    }
+
+    let parsed = match parse_run_args(args) {
+        Ok(p) => p,
+        Err(code) => return ExitCode::from(code),
+    };
+    let RunArgs {
+        persona_id,
+        scenario_name,
+        stick,
+        firmware_root,
+        work_dir,
+    } = parsed;
+
+    let personas = match load_or_report() {
+        Ok(p) => p,
+        Err(code) => return ExitCode::from(code),
+    };
+    let Some(persona) = personas.into_iter().find(|p| p.id == persona_id) else {
+        eprintln!("aegis-hwsim run: persona '{persona_id}' not found");
+        eprintln!("Run 'aegis-hwsim list-personas' to see available ids.");
+        return ExitCode::from(1);
+    };
+
+    let registry = aegis_hwsim::scenario::Registry::default_set();
+    let Some(scenario) = registry.find(scenario_name) else {
+        eprintln!("aegis-hwsim run: scenario '{scenario_name}' not found");
+        eprintln!("Run 'aegis-hwsim list-scenarios' to see available names.");
+        return ExitCode::from(1);
+    };
+
+    let firmware_root = firmware_root.unwrap_or_else(|| PathBuf::from("/usr/share/OVMF"));
+    let work_dir = work_dir.unwrap_or_else(|| {
+        let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        cwd.join("work")
+            .join(format!("{persona_id}-{scenario_name}"))
+    });
+
+    let ctx = aegis_hwsim::scenario::ScenarioContext {
+        persona,
+        stick,
+        work_dir,
+        firmware_root,
+    };
+
+    match scenario.run(&ctx) {
+        Ok(result) => {
+            let label = result.label();
+            let reason = result.reason();
+            if reason.is_empty() {
+                println!("{label}: {scenario_name} on {persona_id}");
+            } else {
+                println!("{label}: {scenario_name} on {persona_id}");
+                println!("  {reason}");
+            }
+            match result {
+                aegis_hwsim::scenario::ScenarioResult::Pass => ExitCode::SUCCESS,
+                aegis_hwsim::scenario::ScenarioResult::Fail { .. } => ExitCode::from(1),
+                aegis_hwsim::scenario::ScenarioResult::Skip { .. } => ExitCode::from(77),
+            }
+        }
+        Err(e) => {
+            eprintln!("aegis-hwsim run: scenario runner error: {e}");
+            ExitCode::from(1)
+        }
     }
 }
 
