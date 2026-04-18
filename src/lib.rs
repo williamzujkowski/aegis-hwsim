@@ -8,6 +8,7 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+pub mod coverage_grid;
 pub mod loader;
 pub mod ovmf;
 pub mod persona;
