@@ -24,7 +24,17 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Some("--version" | "version") => {
-            println!("aegis-hwsim v{}", env!("CARGO_PKG_VERSION"));
+            // Match aegis-boot --version --json (PR #205): scriptable
+            // consumers can parse without regex on the human string.
+            if args.iter().any(|a| a == "--json") {
+                println!("{{");
+                println!("  \"schema_version\": 1,");
+                println!("  \"tool\": \"aegis-hwsim\",");
+                println!("  \"version\": \"{}\"", env!("CARGO_PKG_VERSION"));
+                println!("}}");
+            } else {
+                println!("aegis-hwsim v{}", env!("CARGO_PKG_VERSION"));
+            }
             ExitCode::SUCCESS
         }
         Some(other) => {
@@ -290,9 +300,10 @@ fn run_doctor(args: &[String]) -> ExitCode {
         println!("aegis-hwsim doctor — check host has qemu/swtpm/ovmf installed");
         println!();
         println!("USAGE:");
-        println!("  aegis-hwsim doctor [--firmware-root DIR]");
+        println!("  aegis-hwsim doctor [--firmware-root DIR] [--json]");
         println!();
         println!("  --firmware-root DIR  Override OVMF dir (default: /usr/share/OVMF)");
+        println!("  --json               schema_version=1 envelope (matches family convention)");
         return ExitCode::SUCCESS;
     }
     let firmware_root = args
@@ -300,8 +311,13 @@ fn run_doctor(args: &[String]) -> ExitCode {
         .position(|a| a == "--firmware-root")
         .and_then(|i| args.get(i + 1))
         .map_or_else(|| PathBuf::from("/usr/share/OVMF"), PathBuf::from);
+    let json_mode = args.iter().any(|a| a == "--json");
     let report = aegis_hwsim::doctor::run(&firmware_root);
-    print!("{}", report.render());
+    if json_mode {
+        print!("{}", report.render_json());
+    } else {
+        print!("{}", report.render());
+    }
     if report.has_failures() {
         ExitCode::from(1)
     } else {
@@ -359,13 +375,25 @@ fn run_list_scenarios(args: &[String]) -> ExitCode {
     if matches!(args.first().map(String::as_str), Some("--help" | "-h")) {
         println!("aegis-hwsim list-scenarios — show registered test scenarios");
         println!();
-        println!("USAGE: aegis-hwsim list-scenarios");
+        println!("USAGE: aegis-hwsim list-scenarios [--json]");
+        println!();
+        println!("  --json    schema_version=1 envelope (matches family convention)");
         return ExitCode::SUCCESS;
     }
+    let json_mode = args.iter().any(|a| a == "--json");
     let registry = aegis_hwsim::scenario::Registry::default_set();
+    if json_mode {
+        print_scenarios_json(&registry);
+    } else {
+        print_scenarios_table(&registry);
+    }
+    ExitCode::SUCCESS
+}
+
+fn print_scenarios_table(registry: &aegis_hwsim::scenario::Registry) {
     if registry.is_empty() {
         println!("(no scenarios registered)");
-        return ExitCode::SUCCESS;
+        return;
     }
     println!("{:<28} DESCRIPTION", "NAME");
     for (name, desc) in registry.iter() {
@@ -373,7 +401,26 @@ fn run_list_scenarios(args: &[String]) -> ExitCode {
     }
     println!();
     println!("{} scenario(s).", registry.len());
-    ExitCode::SUCCESS
+}
+
+fn print_scenarios_json(registry: &aegis_hwsim::scenario::Registry) {
+    println!("{{");
+    println!("  \"schema_version\": 1,");
+    println!("  \"tool\": \"aegis-hwsim\",");
+    println!("  \"tool_version\": \"{}\",", env!("CARGO_PKG_VERSION"));
+    println!("  \"count\": {},", registry.len());
+    println!("  \"scenarios\": [");
+    let entries: Vec<_> = registry.iter().collect();
+    let last = entries.len().saturating_sub(1);
+    for (i, (name, desc)) in entries.iter().enumerate() {
+        let comma = if i == last { "" } else { "," };
+        println!("    {{");
+        println!("      \"name\": \"{}\",", json_escape(name));
+        println!("      \"description\": \"{}\"", json_escape(desc));
+        println!("    }}{comma}");
+    }
+    println!("  ]");
+    println!("}}");
 }
 
 /// Parsed argv for `run_scenario`. Owned by the caller; lifetimes

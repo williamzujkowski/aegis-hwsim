@@ -112,6 +112,67 @@ impl Report {
         let _ = writeln!(out, "NEXT ACTION: {}", self.next_action());
         out
     }
+
+    /// Render as `schema_version=1` JSON envelope. Matches the
+    /// [aegis-boot family --json convention](https://github.com/williamzujkowski/aegis-boot/pull/191):
+    /// `tool`, `tool_version`, plus a `next_action` summary alongside
+    /// the per-check rows so scripted consumers don't need to re-derive it.
+    #[must_use]
+    pub fn render_json(&self) -> String {
+        use std::fmt::Write as _;
+        let mut out = String::with_capacity(self.checks.len() * 200);
+        out.push_str("{\n");
+        out.push_str("  \"schema_version\": 1,\n");
+        out.push_str("  \"tool\": \"aegis-hwsim\",\n");
+        let _ = writeln!(
+            out,
+            "  \"tool_version\": \"{}\",",
+            env!("CARGO_PKG_VERSION")
+        );
+        let _ = writeln!(
+            out,
+            "  \"next_action\": \"{}\",",
+            json_escape(&self.next_action())
+        );
+        let _ = writeln!(out, "  \"has_failures\": {},", self.has_failures());
+        let _ = writeln!(out, "  \"has_warnings\": {},", self.has_warnings());
+        out.push_str("  \"checks\": [\n");
+        let last = self.checks.len().saturating_sub(1);
+        for (i, c) in self.checks.iter().enumerate() {
+            let comma = if i == last { "" } else { "," };
+            out.push_str("    {\n");
+            let _ = writeln!(out, "      \"verdict\": \"{}\",", c.verdict.label());
+            let _ = writeln!(out, "      \"subject\": \"{}\",", json_escape(&c.subject));
+            let _ = writeln!(out, "      \"message\": \"{}\"", json_escape(&c.message));
+            let _ = writeln!(out, "    }}{comma}");
+        }
+        out.push_str("  ]\n");
+        out.push_str("}\n");
+        out
+    }
+}
+
+/// Minimal JSON string escape — matches the helper in
+/// `bin/aegis-hwsim.rs` + `coverage_grid.rs`. Duplicated here only
+/// because doctor doesn't depend on either; would extract to a shared
+/// `json` module if a fourth caller appeared.
+fn json_escape(s: &str) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => {
+                let _ = write!(out, "\\u{:04x}", c as u32);
+            }
+            c => out.push(c),
+        }
+    }
+    out
 }
 
 /// Run the doctor checks against `firmware_root`. Returns a [`Report`]
@@ -386,5 +447,58 @@ mod tests {
         assert!(s.contains("SUBJECT"));
         assert!(s.contains("MESSAGE"));
         assert!(s.contains("NEXT ACTION:"));
+    }
+
+    #[test]
+    fn render_json_emits_schema_version_envelope_and_checks_array() {
+        let (_tmp, root) = fake_firmware_root();
+        let r = run(&root);
+        let json = r.render_json();
+        assert!(json.contains("\"schema_version\": 1"));
+        assert!(json.contains("\"tool\": \"aegis-hwsim\""));
+        assert!(json.contains("\"tool_version\":"));
+        assert!(json.contains("\"next_action\":"));
+        assert!(json.contains("\"has_failures\":"));
+        assert!(json.contains("\"checks\": ["));
+        assert!(json.contains("\"verdict\":"));
+        assert!(json.contains("\"subject\":"));
+    }
+
+    #[test]
+    fn render_json_is_valid_json() {
+        // Hand-rolled emitter — round-trip through serde_json catches
+        // any escaping or comma-placement bug.
+        let (_tmp, root) = fake_firmware_root();
+        let r = run(&root);
+        let json = r.render_json();
+        let parsed: serde_json::Value =
+            serde_json::from_str(&json).expect("doctor --json output must parse");
+        assert_eq!(parsed["schema_version"], 1);
+        assert_eq!(parsed["tool"], "aegis-hwsim");
+        assert!(parsed["checks"].is_array());
+    }
+
+    #[test]
+    fn render_json_escapes_special_chars_in_messages() {
+        // Construct a synthetic Report with a message containing
+        // characters the escaper handles: quote, backslash, newline,
+        // tab, control char.
+        let r = Report {
+            checks: vec![Check {
+                verdict: Verdict::Warn,
+                subject: "test".into(),
+                message: "quote\" backslash\\ newline\n tab\t ctrl\x01 end".into(),
+            }],
+        };
+        let json = r.render_json();
+        let parsed: serde_json::Value =
+            serde_json::from_str(&json).expect("escaped output must still parse");
+        // serde_json normalizes escapes; round-trip recovers the original.
+        let msg = parsed["checks"][0]["message"].as_str().unwrap();
+        assert!(msg.contains("quote\""));
+        assert!(msg.contains("backslash\\"));
+        assert!(msg.contains("newline\n"));
+        assert!(msg.contains("tab\t"));
+        assert!(msg.contains('\x01'));
     }
 }
