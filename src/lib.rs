@@ -9,5 +9,6 @@
 #![warn(missing_docs)]
 
 pub mod loader;
+pub mod ovmf;
 pub mod persona;
 pub mod smbios;
