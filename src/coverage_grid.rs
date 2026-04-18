@@ -186,7 +186,11 @@ fn render_json(cells: &[GridCell]) -> String {
     out.push_str("{\n");
     out.push_str("  \"schema_version\": 1,\n");
     out.push_str("  \"tool\": \"aegis-hwsim\",\n");
-    let _ = writeln!(out, "  \"tool_version\": \"{}\",", env!("CARGO_PKG_VERSION"));
+    let _ = writeln!(
+        out,
+        "  \"tool_version\": \"{}\",",
+        env!("CARGO_PKG_VERSION")
+    );
     out.push_str("  \"cells\": [\n");
     let last = cells.len().saturating_sub(1);
     for (i, c) in cells.iter().enumerate() {
