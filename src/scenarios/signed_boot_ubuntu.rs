@@ -26,6 +26,7 @@
 
 use crate::qemu::Invocation;
 use crate::scenario::{Scenario, ScenarioContext, ScenarioError, ScenarioResult};
+use crate::scenarios::common::binary_on_path;
 use crate::serial::SerialCapture;
 use crate::swtpm::{SwtpmInstance, SwtpmSpec};
 use std::time::Duration;
@@ -126,23 +127,6 @@ impl Scenario for SignedBootUbuntu {
     }
 }
 
-/// Cheap PATH lookup — splits PATH on `:`, joins each entry with
-/// `binary`, and checks for an executable file. Used by the skip
-/// gates so missing tools yield SKIP rather than a confusing
-/// `SpawnFailed` at the QEMU/swtpm boundary.
-fn binary_on_path(binary: &str) -> bool {
-    let Ok(path) = std::env::var("PATH") else {
-        return false;
-    };
-    for dir in path.split(':') {
-        let candidate = std::path::Path::new(dir).join(binary);
-        if candidate.is_file() {
-            return true;
-        }
-    }
-    false
-}
-
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
@@ -209,18 +193,6 @@ tpm:
         }
     }
 
-    /// PATH-based skip — covered indirectly here. We can't easily
-    /// install/uninstall qemu-system-x86_64 in unit tests, so the
-    /// real assertion is "`binary_on_path` returns false for nonsense
-    /// names and true for `sh`."
-    #[test]
-    fn binary_on_path_finds_existing_binary() {
-        // `sh` is on PATH on every CI/dev machine we care about.
-        assert!(binary_on_path("sh"));
-    }
-
-    #[test]
-    fn binary_on_path_misses_nonexistent_binary() {
-        assert!(!binary_on_path("definitely-not-a-binary-xyz-12345"));
-    }
+    // PATH-based skip is exercised by `binary_on_path` tests in
+    // `scenarios::common::tests`; not duplicated here.
 }

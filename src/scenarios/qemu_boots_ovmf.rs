@@ -17,6 +17,7 @@
 
 use crate::qemu::Invocation;
 use crate::scenario::{Scenario, ScenarioContext, ScenarioError, ScenarioResult};
+use crate::scenarios::common::binary_on_path;
 use crate::serial::SerialCapture;
 use crate::swtpm::{SwtpmInstance, SwtpmSpec};
 use std::time::Duration;
@@ -128,22 +129,6 @@ impl Scenario for QemuBootsOvmf {
             })
         }
     }
-}
-
-/// Same PATH lookup as the other scenarios. Duplicated for now — a
-/// future `scenarios::common` module can extract it when there's a
-/// third caller.
-fn binary_on_path(binary: &str) -> bool {
-    let Ok(path) = std::env::var("PATH") else {
-        return false;
-    };
-    for dir in path.split(':') {
-        let candidate = std::path::Path::new(dir).join(binary);
-        if candidate.is_file() {
-            return true;
-        }
-    }
-    false
 }
 
 #[cfg(test)]
