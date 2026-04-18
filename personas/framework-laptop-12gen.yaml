@@ -5,12 +5,14 @@ display_name: "Framework Laptop (12th Gen Intel Core)"
 year: 2022
 
 source:
-  # Derived from DMI readout on a real unit running aegis-boot#195 (doctor
-  # compat-DB cross-check) during the 2026-04-17 dogfood session. Upgrade
-  # to community_report with an issue link once the full chain is verified.
+  # DMI captured 2026-04-17 via aegis-boot#195 (doctor compat-DB
+  # cross-check). Full signed-chain boot verified end-to-end 2026-04-18
+  # against this persona via aegis-hwsim signed-boot-ubuntu scenario;
+  # see aegis-boot#236 for the verified-outcome report (boot landmarks
+  # observed: BdsDxe → GNU GRUB → EFI stub SB-enabled → rescue-tui).
   kind: community_report
-  ref_: "https://github.com/williamzujkowski/aegis-boot/issues/195 (interactive dogfood session, 2026-04-17)"
-  captured_at: 2026-04-17
+  ref_: "https://github.com/williamzujkowski/aegis-boot/issues/236 (signed-chain validated 2026-04-18) + #195 (DMI capture 2026-04-17)"
+  captured_at: 2026-04-18
 
 dmi:
   # Verbatim from /sys/class/dmi/id/* on a real Framework 12th Gen unit.
