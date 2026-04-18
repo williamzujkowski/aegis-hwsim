@@ -1,0 +1,46 @@
+schema_version: 1
+id: qemu-setup-mode-sb
+vendor: QEMU
+display_name: "QEMU diagnostic (Secure Boot in Setup Mode — operator MOK enrollment flow)"
+year: 2024
+
+source:
+  # Harness-only persona for the SB Setup Mode boot path. Setup Mode
+  # is what new motherboards ship in BEFORE the OEM enrolls the PK —
+  # OVMF's behavior here matches an operator who's reset their
+  # SB variables (a real-world recovery flow). aegis-boot's MOK
+  # enrollment walkthrough (#202) targets this state.
+  #
+  # Without this persona, ovmf::resolve's SetupMode branch (secboot
+  # CODE + blank VARS) is exercised only by unit tests, never by the
+  # matrix.
+  kind: vendor_docs
+  ref_: "QEMU -smbios documentation + OVMF Setup Mode (OVMF_VARS_4M.fd, blank/no-PK)"
+
+dmi:
+  sys_vendor: QEMU
+  product_name: "Standard PC (Q35 + ICH9, 2009)"
+  bios_vendor: EDK II
+  bios_version: "edk2-stable202402"
+  bios_date: 02/29/2024
+
+secure_boot:
+  ovmf_variant: setup_mode
+
+tpm:
+  # Setup Mode is about SB key state, not TPM. Keep this no-TPM
+  # so it stays harness-self-test-eligible without expanding swtpm
+  # dependencies. Real-hardware MOK-enrollment scenarios will use
+  # a TPM-bearing persona separately.
+  version: none
+
+kernel:
+  lockdown: inherit
+
+quirks:
+  - tag: harness-self-test-only
+    description: "Diagnostic persona for the SB-setup-mode boot path. Not a real laptop."
+  - tag: setup-mode-no-pk
+    description: "Setup Mode means no PK enrolled — OVMF accepts unsigned binaries until the operator enrolls PK + KEK + db. Real flow: operator reboots into MokManager, enrolls a hash or a key, returns to OVMF which now refuses unsigned. aegis-boot#202 covers the operator-side walkthrough."
+  - tag: ovmf-vars-blank
+    description: "Setup Mode uses the blank VARS template (OVMF_VARS_4M.fd, not the .ms.fd MS-enrolled variant). Matrix coverage of this branch was previously gated on this persona."
