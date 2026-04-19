@@ -1,5 +1,11 @@
 # aegis-hwsim
 
+[![CI](https://github.com/williamzujkowski/aegis-hwsim/actions/workflows/ci.yml/badge.svg)](https://github.com/williamzujkowski/aegis-hwsim/actions/workflows/ci.yml)
+[![MSRV](https://img.shields.io/badge/MSRV-1.85-blue)](./Cargo.toml)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](./LICENSE-MIT)
+
+<!-- crates.io + docs.rs badges pending first `cargo publish` (tracked: E7 #7) -->
+
 **Status:** Phase 1 working. CI exercises the full QEMU+OVMF+swtpm pipeline against the persona library on every PR via the `qemu-boots-ovmf` smoke scenario. Tracks [aegis-boot#226](https://github.com/williamzujkowski/aegis-boot/issues/226).
 
 A test harness that parameterizes **QEMU + OVMF + swtpm** over a matrix of **hardware personas** — YAML fixtures matching real shipping laptops/workstations — so [aegis-boot](https://github.com/williamzujkowski/aegis-boot)'s UEFI-Secure-Boot-preserving USB-rescue-stick flow can be validated across ~100 configurations without waiting on physical Framework / ThinkPad / Dell / HP / ASUS hardware.

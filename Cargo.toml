@@ -10,6 +10,18 @@ homepage = "https://github.com/williamzujkowski/aegis-hwsim"
 readme = "README.md"
 keywords = ["qemu", "ovmf", "uefi", "testing", "secure-boot"]
 categories = ["development-tools::testing", "emulators"]
+# Exclude dev-facing files from `cargo package` so `cargo install` /
+# crates.io downloads stay lean and ship no placeholder fixtures that
+# could be mistaken for real keyring material. Per E7 (#7) audit
+# 2026-04-19. Tests + their fixtures stay — they're needed for
+# `cargo test` on consumers' machines.
+exclude = [
+    "CLAUDE.md",
+    ".github/**",
+    "firmware/test-keyring/**",
+    "docs/research/**",
+    "scenarios/README.md",
+]
 
 [[bin]]
 name = "aegis-hwsim"
