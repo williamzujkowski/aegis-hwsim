@@ -5,7 +5,7 @@
 //! Guards implemented here (aegis-hwsim#8):
 //!
 //! * **Parse** — YAML syntax and serde structural validation (missing
-//!   fields, wrong types). Comes from `serde_yaml`; we wrap the error.
+//!   fields, wrong types). Comes from `serde_yaml_ng`; we wrap the error.
 //! * **`IdMismatch`** — `persona.id` must equal the filename stem (without
 //!   `.yaml`). Catches the common rename-one-forget-the-other bug.
 //! * **Placeholder** — no `TEST_ONLY_NOT_FOR_PRODUCTION` token may appear
@@ -49,7 +49,7 @@ pub enum LoadError {
         path: PathBuf,
         /// Underlying parser error.
         #[source]
-        source: serde_yaml::Error,
+        source: serde_yaml_ng::Error,
     },
 
     /// `persona.id` doesn't match the filename stem.
@@ -167,7 +167,7 @@ fn load_one(path: &Path, opts: &LoadOptions) -> Result<Persona, LoadError> {
         path: path.to_path_buf(),
         source,
     })?;
-    let persona: Persona = serde_yaml::from_str(&body).map_err(|source| LoadError::Parse {
+    let persona: Persona = serde_yaml_ng::from_str(&body).map_err(|source| LoadError::Parse {
         path: path.to_path_buf(),
         source,
     })?;

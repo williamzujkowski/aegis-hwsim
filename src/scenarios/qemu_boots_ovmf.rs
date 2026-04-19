@@ -139,7 +139,7 @@ mod tests {
     use std::path::PathBuf;
 
     fn no_tpm_persona() -> Persona {
-        serde_yaml::from_str(
+        serde_yaml_ng::from_str(
             "
 schema_version: 1
 id: smoke-test

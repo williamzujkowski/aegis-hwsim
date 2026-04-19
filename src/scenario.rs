@@ -237,7 +237,7 @@ mod tests {
 
     fn fake_ctx() -> ScenarioContext {
         ScenarioContext {
-            persona: serde_yaml::from_str(
+            persona: serde_yaml_ng::from_str(
                 r#"
 schema_version: 1
 id: fake

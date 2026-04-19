@@ -265,7 +265,7 @@ secure_boot:
 tpm:
   version: "2.0"
 "#;
-        let p: Persona = serde_yaml::from_str(yaml).unwrap();
+        let p: Persona = serde_yaml_ng::from_str(yaml).unwrap();
         assert_eq!(p.id, "qemu-generic-minimal");
         assert_eq!(p.dmi.sys_vendor, "QEMU");
         assert!(matches!(

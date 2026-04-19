@@ -330,7 +330,7 @@ tpm:
   version: none
 "
         );
-        serde_yaml::from_str(&yaml).unwrap()
+        serde_yaml_ng::from_str(&yaml).unwrap()
     }
 
     /// A minimal scenario for grid tests — always returns the result

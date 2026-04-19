@@ -154,7 +154,7 @@ mod tests {
     use std::path::PathBuf;
 
     fn make_persona(yaml: &str) -> Persona {
-        serde_yaml::from_str(yaml).unwrap()
+        serde_yaml_ng::from_str(yaml).unwrap()
     }
 
     fn base_persona_yaml() -> &'static str {
