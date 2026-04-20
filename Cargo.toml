@@ -7,6 +7,7 @@ license = "MIT OR Apache-2.0"
 description = "QEMU+OVMF+swtpm hardware-persona matrix harness for aegis-boot signed-chain testing"
 repository = "https://github.com/williamzujkowski/aegis-hwsim"
 homepage = "https://github.com/williamzujkowski/aegis-hwsim"
+documentation = "https://docs.rs/aegis-hwsim"
 readme = "README.md"
 keywords = ["qemu", "ovmf", "uefi", "testing", "secure-boot"]
 categories = ["development-tools::testing", "emulators"]
