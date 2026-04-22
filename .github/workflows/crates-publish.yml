@@ -1,0 +1,60 @@
+name: Publish to crates.io (trusted publishing)
+
+# Trusted Publishing to crates.io — NO long-lived CARGO_REGISTRY_TOKEN.
+# The aegis-hwsim crate is configured on crates.io with a trusted
+# publisher pointing at this workflow + the `release` environment.
+# rust-lang/crates-io-auth-action exchanges the GitHub OIDC token
+# for a short-lived (~30 min) crates.io token consumed by
+# `cargo publish` via scripts/publish-if-new.sh.
+#
+# Mirrors the `aegis-boot/aegis-boot` publish workflow; same
+# scripts/publish-if-new.sh wrapper makes the publish idempotent
+# (skip + exit 0 if already at the workspace version, no
+# cascade-fail).
+#
+# Triggers:
+#   - Tagged releases (v*.*.* / v*.*.*-*)
+#   - workflow_dispatch for manual republish
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+      - 'v*.*.*-*'
+  workflow_dispatch:
+
+# Single-publish-at-a-time so we never race two tag pushes.
+concurrency:
+  group: crates-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: cargo publish (trusted)
+    runs-on: ubuntu-latest
+    # Environment gate: tag-scoped to `v*` (only signed v* tag
+    # pushes can enter — branches cannot publish). No required-
+    # reviewer rule — autonomous bug-fix releases per the
+    # aegis-boot/aegis-boot precedent (2026-04-22).
+    environment: release
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust toolchain (pinned)
+        run: |
+          rustup toolchain install 1.85.0 --profile minimal --no-self-update
+          rustup default 1.85.0
+          rustc --version
+
+      - name: Mint short-lived crates.io token (OIDC)
+        uses: rust-lang/crates-io-auth-action@v1
+        id: cio_auth
+
+      - name: publish aegis-hwsim
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.cio_auth.outputs.token }}
+        run: ./scripts/publish-if-new.sh aegis-hwsim
