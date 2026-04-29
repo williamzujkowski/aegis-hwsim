@@ -1,26 +1,25 @@
-//! `mok-enroll-alpine` — boot Alpine (unsigned kernel) under MS-enrolled Secure Boot, assert aegis-boot's rescue-tui surfaces the MOK enrollment walkthrough STEP 1/3 (`sudo mokutil --import`).
+//! `mok-enroll-alpine` — boot under MS-enrolled SB with `aegis.test=mok-enroll` on the kernel cmdline, assert aegis-boot's rescue-tui surfaces the MOK enrollment walkthrough STEP 1/3 (`sudo mokutil --import`) verbatim per [aegis-boot#202](https://github.com/aegis-boot/aegis-boot/pull/202) and [PR #681](https://github.com/aegis-boot/aegis-boot/pull/681).
 //!
 //! # What this scenario asserts
 //!
-//! 1. Persona boots successfully (shim → grub → kernel rejected → fallback path → rescue-tui), same prerequisite chain as [`super::SignedBootUbuntu`].
-//! 2. Rescue-tui detects an unsigned/unrecognized kernel was attempted and surfaces the MOK enrollment walkthrough — the operator-facing recovery path documented in aegis-boot#202.
-//! 3. The walkthrough's STEP 1 surfaces the `sudo mokutil --import` command verbatim. Operators will literally copy-paste it; the harness asserts the exact string so a future drift in #202's docstring lights up here rather than confusing an operator at 2am.
+//! 1. Persona boots successfully (shim → grub → kernel → init), same prerequisite chain as [`super::SignedBootUbuntu`].
+//! 2. The initramfs detects `aegis.test=mok-enroll` on the kernel cmdline and exports `AEGIS_TEST=mok-enroll`. `init` prints `init: AEGIS_TEST=mok-enroll (cmdline-driven test mode)` per [aegis-boot `scripts/build-initramfs.sh`](https://github.com/aegis-boot/aegis-boot/pull/680).
+//! 3. Rescue-tui's `dispatch_from_env` fires the `mok-enroll` test mode, which prints the canonical 3-step walkthrough body — same text the rescue-tui kexec-failure path renders, sourced from aegis-boot's `crate::state::build_mokutil_remedy`. This is a static-text mode (no kexec, no ISO) so the harness asserts the contract without driving a real unsigned-kernel boot.
+//! 4. The walkthrough's STEP 1 surfaces the `sudo mokutil --import` command verbatim. Operators will literally copy-paste it; the harness asserts the exact string so a future drift in #202's text lights up here rather than confusing an operator at 2 AM.
 //!
 //! # Prerequisites
 //!
-//! - An aegis-boot stick with an Alpine ISO loaded (or an Alpine boot path the rescue-tui surfaces). The stick fixture path is supplied via [`ScenarioContext::stick`]; the operator stages it via `aegis-boot flash` or the `AEGIS_HWSIM_STICK` env var (matching the convention from `signed_boot_ubuntu`).
-//! - Persona with `secure_boot.ovmf_variant: ms_enrolled`. `custom_pk` would also work but the MOK enrollment story is specifically about the MS-enrolled / vendor-shim path; `disabled` and `setup_mode` short-circuit because there's no signature gate to fail.
+//! - An aegis-boot stick whose grub.cfg adds `aegis.test=mok-enroll` to the kernel cmdline (same shape as [`super::KexecRefusesUnsigned`]). A stick that boots cleanly without the cmdline will Skip.
+//! - Persona with `secure_boot.ovmf_variant: ms_enrolled`. `custom_pk` (operator owns root keys, mokutil's job is gone), `disabled` (no signature gate), and `setup_mode` (no PK enrolled) all Skip.
 //!
-//! # When this scenario skips
+//! # When this scenario skips vs fails
 //!
-//! - Stick missing on disk.
-//! - `qemu-system-x86_64` not on PATH.
-//! - `swtpm` missing AND the persona requests TPM.
-//! - Persona's `secure_boot.ovmf_variant` isn't `ms_enrolled`.
-//!
-//! # When this scenario fails (vs skips)
-//!
-//! Boot didn't reach rescue-tui's prereq landmarks → `Fail` (the harness pipeline broke). Boot reached rescue-tui but the MOK walkthrough never fired → `Skip` (the stick wasn't built with the unsigned-Alpine path). Walkthrough fired but the literal `sudo mokutil --import` command didn't appear → `Fail` (real bug — aegis-boot#202's text drifted, an operator running this would be stuck).
+//! - Stick / qemu / swtpm prereqs missing → Skip.
+//! - Persona `ovmf_variant` isn't `ms_enrolled` → Skip.
+//! - Boot didn't reach kernel-userspace handoff → Fail (harness pipeline broke).
+//! - Kernel reached but `init: AEGIS_TEST=mok-enroll` didn't fire → Skip (cmdline wasn't injected).
+//! - `init` saw the cmdline but rescue-tui didn't print the walkthrough header → Fail (`test_mode` dispatcher regressed).
+//! - Walkthrough header fired but STEP 1/3 + the literal `sudo mokutil --import` command didn't appear → Fail (real bug — aegis-boot#202's text drifted; operators in the field would be stuck).
 
 use crate::persona::OvmfVariant;
 use crate::qemu::Invocation;
@@ -33,20 +32,32 @@ use std::time::Duration;
 /// Per-landmark wait timeout. Same 60s ceiling as the other scenarios — cold-boot OVMF + MS-enrolled SB chain + rescue-tui walkthrough is the slow path.
 const LANDMARK_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// Pre-walkthrough landmarks: the chain has to reach rescue-tui before the walkthrough can fire.
-const PREREQ_LANDMARKS: &[&str] = &[
-    "EFI stub: UEFI Secure Boot is enabled",
-    "rescue-tui starting",
-];
+/// Pre-test landmark — kernel must reach userspace before the
+/// initramfs can dispatch the test mode. We don't pin
+/// `rescue-tui starting` here because under `aegis.test=...` the
+/// dispatcher fires BEFORE the interactive TUI prints its banner
+/// (see aegis-boot `crates/rescue-tui/src/main.rs` —
+/// `test_mode::dispatch_from_env` returns before `run`).
+const PREREQ_LANDMARKS: &[&str] = &["EFI stub: UEFI Secure Boot is enabled"];
 
-/// MOK enrollment walkthrough landmarks. Order is significant — STEP 1 must come before STEP 2/3.
+/// MOK walkthrough landmarks — published contract from aegis-boot
+/// `docs/rescue-tui-serial-format.md` (see PR #681). Order is
+/// significant: cmdline detection → walkthrough header → step
+/// marker → load-bearing copy-paste command.
 ///
-/// 1. `MOK enrollment walkthrough` — rescue-tui's section header. Without this we can't tell whether the walkthrough actually ran (vs. the stick not having the Alpine/MOK hook compiled in).
-///
-/// 2. `STEP 1/3` — section marker for the `mokutil --import` step. aegis-boot#202 ships exactly three steps; the harness asserts step 1 because that's the load-bearing one (without it the operator can't proceed).
-///
-/// 3. `sudo mokutil --import` — the literal copy-paste command. This is the assertion the issue body specifically calls out: "assert the MOK walkthrough STEP 1/3 `sudo mokutil --import` command string appears in the serial log exactly as #202 ships it". A future drift in #202 lights up here.
+/// 1. `init: AEGIS_TEST=mok-enroll` — `/init` saw the cmdline. Missing
+///    this means the stick's grub.cfg didn't inject the param;
+///    test isn't measuring anything → Skip.
+/// 2. `MOK enrollment walkthrough` — rescue-tui's `mok-enroll` test
+///    fn fired. Substring matches both the `starting` header and
+///    the `complete` footer.
+/// 3. `STEP 1/3` — section marker for the `mokutil --import` step.
+///    Confirms the walkthrough body printed.
+/// 4. `sudo mokutil --import` — the verbatim copy-paste payload.
+///    Drift here would leave an operator at 2 AM with a non-working
+///    command line — the harness exists to catch exactly this.
 const TEST_LANDMARKS: &[&str] = &[
+    "init: AEGIS_TEST=mok-enroll",
     "MOK enrollment walkthrough",
     "STEP 1/3",
     "sudo mokutil --import",
@@ -128,14 +139,14 @@ impl Scenario for MokEnrollAlpine {
         let log_path = ctx.work_dir.join("serial.log");
         let handle = SerialCapture::spawn(inv.build(), &log_path, None)?;
 
-        // Wait for rescue-tui to come up first. Without this the
-        // walkthrough landmarks can never fire.
+        // First wait for the kernel-userspace handoff under enforcing
+        // SB. Without this, the boot didn't even reach the initramfs.
         for landmark in PREREQ_LANDMARKS {
             if handle.wait_for_line(landmark, LANDMARK_TIMEOUT).is_none() {
                 return Ok(ScenarioResult::Fail {
                     reason: format!(
                         "prerequisite landmark '{landmark}' not seen within {}s. \
-                         Boot didn't reach rescue-tui — MOK walkthrough can't fire. \
+                         Boot didn't reach kernel-userspace handoff — MOK walkthrough can't fire. \
                          Serial log: {}.",
                         LANDMARK_TIMEOUT.as_secs(),
                         log_path.display(),
@@ -144,35 +155,40 @@ impl Scenario for MokEnrollAlpine {
             }
         }
 
-        // First walkthrough landmark — its absence means the stick
-        // didn't actually trigger the MOK path. Skip (test wasn't
-        // run), don't Fail.
+        // First test landmark — `/init` cmdline detection. Missing it
+        // means the stick's grub.cfg didn't inject `aegis.test=mok-enroll`;
+        // test isn't measuring anything → Skip (not Fail).
         match handle.wait_for_line(TEST_LANDMARKS[0], LANDMARK_TIMEOUT) {
             Some(_) => {}
             None => {
                 return Ok(ScenarioResult::Skip {
                     reason: format!(
-                        "stick reached rescue-tui but the MOK enrollment walkthrough \
-                         didn't fire. The stick needs an Alpine ISO entry that grub \
-                         attempts under SB, OR an `aegis.test=mok-enroll` cmdline \
-                         hook. Serial log: {}.",
+                        "kernel reached but `init: AEGIS_TEST=mok-enroll` did not fire. \
+                         The stick's grub.cfg needs `aegis.test=mok-enroll` on the \
+                         kernel cmdline (see aegis-boot scripts/build-initramfs.sh, PR #680). \
+                         Serial log: {}.",
                         log_path.display()
                     ),
                 });
             }
         }
 
-        // Walkthrough fired. Remaining landmarks (STEP 1/3 + the
-        // exact mokutil command) MUST appear, otherwise aegis-boot#202
-        // drifted and operators would be left without a copy-pastable
-        // command — that's a real defect, not a Skip.
+        // Test mode entered. Remaining landmarks (walkthrough header,
+        // STEP 1/3, mokutil command) MUST appear, otherwise either
+        // (a) the rescue-tui dispatcher regressed (init saw the
+        // cmdline but rescue-tui didn't fire the walkthrough), or
+        // (b) aegis-boot#202's text drifted and operators in the
+        // field would be stuck without a copy-pastable command.
+        // Both are real defects, not Skip conditions.
         for landmark in &TEST_LANDMARKS[1..] {
             if handle.wait_for_line(landmark, LANDMARK_TIMEOUT).is_none() {
                 return Ok(ScenarioResult::Fail {
                     reason: format!(
-                        "walkthrough started but '{landmark}' not seen within {}s. \
-                         aegis-boot#202's MOK walkthrough drifted; an operator \
-                         hitting this in the field would be stuck. Serial log: {}.",
+                        "init detected the cmdline but '{landmark}' not seen within {}s. \
+                         Either rescue-tui's mok-enroll dispatcher regressed, or \
+                         aegis-boot#202's MOK walkthrough text drifted (see \
+                         docs/rescue-tui-serial-format.md substring contract). \
+                         Serial log: {}.",
                         LANDMARK_TIMEOUT.as_secs(),
                         log_path.display(),
                     ),
