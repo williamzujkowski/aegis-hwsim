@@ -175,6 +175,7 @@ impl Registry {
         r.register(Box::new(crate::scenarios::QemuBootsOvmf));
         r.register(Box::new(crate::scenarios::SignedBootUbuntu));
         r.register(Box::new(crate::scenarios::KexecRefusesUnsigned));
+        r.register(Box::new(crate::scenarios::MokEnrollAlpine));
         r
     }
 
@@ -299,10 +300,11 @@ tpm:
         // the goal is to catch a registry regression that silently
         // drops a published scenario name.
         let r = Registry::default_set();
-        assert_eq!(r.len(), 3);
+        assert_eq!(r.len(), 4);
         assert!(r.find("qemu-boots-ovmf").is_some());
         assert!(r.find("signed-boot-ubuntu").is_some());
         assert!(r.find("kexec-refuses-unsigned").is_some());
+        assert!(r.find("mok-enroll-alpine").is_some());
     }
 
     #[test]
