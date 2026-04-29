@@ -8,3 +8,8 @@ Cargo.lock.bak
 *.qcow2
 *.fd.local
 swtpm-state/
+# E5 test-keyring generator output. Generated certs/keys/auth bundles
+# carry TEST_ONLY_NOT_FOR_PRODUCTION in their CN — they must never
+# be committed (scripts/audit-no-test-keys.sh enforces this at
+# publish, but defense in depth: keep them out of git too).
+firmware/test-keyring/generated/
