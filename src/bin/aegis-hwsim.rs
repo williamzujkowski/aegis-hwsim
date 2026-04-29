@@ -1,5 +1,7 @@
-//! `aegis-hwsim` CLI. Two subcommands wired today (`validate`,
-//! `list-personas`); `run` still exits 3 pending E3.
+//! `aegis-hwsim` CLI. Hand-rolled argv parser (no clap, matching
+//! the aegis-boot family convention) dispatching seven subcommands:
+//! `validate`, `list-personas`, `gen-schema`, `run`, `list-scenarios`,
+//! `coverage-grid`, `doctor`.
 
 #![forbid(unsafe_code)]
 
@@ -8,6 +10,41 @@ use aegis_hwsim::persona::{Persona, SourceKind};
 use std::env;
 use std::path::PathBuf;
 use std::process::ExitCode;
+
+/// Look up the value following `--flag` in an argv slice. Returns
+/// `None` when the flag is absent or the flag is the final argv
+/// token (no value to consume). Exact-equality match on the flag
+/// name — `--firmware-root-extra` does NOT match `--firmware-root`.
+///
+/// `--flag=value` form is intentionally unsupported; the CLI uses
+/// space-separated values throughout, matching the aegis-boot family
+/// convention. If the operator writes `--flag=value`, the whole
+/// `--flag=value` token won't equal `--flag` and the helper returns
+/// `None` (the caller then falls back to default or errors).
+fn flag_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
+    args.iter()
+        .position(|a| a == flag)
+        .and_then(|i| args.get(i + 1))
+        .map(String::as_str)
+}
+
+/// Look up `--flag <PATH>` returning a `PathBuf` or the supplied default.
+/// Convenience wrapper around `flag_value` for the common path-flag pattern.
+fn flag_path_or(args: &[String], flag: &str, default: &str) -> PathBuf {
+    flag_value(args, flag).map_or_else(|| PathBuf::from(default), PathBuf::from)
+}
+
+/// Resolve the current working directory or print a clear error and
+/// exit. The CLI relies on cwd to find `personas/` and `firmware/` (see
+/// `LoadOptions::default_at`); falling back to "." silently — as the
+/// previous `unwrap_or_else(|_| PathBuf::from("."))` did — would let
+/// the harness silently target the wrong filesystem location.
+fn cwd_or_exit() -> Result<PathBuf, ExitCode> {
+    env::current_dir().map_err(|e| {
+        eprintln!("aegis-hwsim: cannot read current working directory: {e}");
+        ExitCode::from(1)
+    })
+}
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
@@ -68,15 +105,15 @@ fn print_help() {
 
 /// Shared helper — resolves the cwd-relative `LoadOptions` and calls into
 /// the loader. Returns the personas on success or prints the error to
-/// stderr and returns the appropriate exit code.
-fn load_or_report() -> Result<Vec<Persona>, u8> {
-    let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+/// stderr and returns the appropriate `ExitCode`.
+fn load_or_report() -> Result<Vec<Persona>, ExitCode> {
+    let cwd = cwd_or_exit()?;
     let opts = LoadOptions::default_at(&cwd);
     match load_all(&opts) {
         Ok(personas) => Ok(personas),
         Err(e) => {
             report_load_error(&e);
-            Err(1)
+            Err(ExitCode::from(1))
         }
     }
 }
@@ -105,7 +142,7 @@ fn run_validate(args: &[String]) -> ExitCode {
             }
             ExitCode::SUCCESS
         }
-        Err(code) => ExitCode::from(code),
+        Err(code) => code,
     }
 }
 
@@ -132,7 +169,7 @@ fn run_list(args: &[String]) -> ExitCode {
             }
             ExitCode::SUCCESS
         }
-        Err(code) => ExitCode::from(code),
+        Err(code) => code,
     }
 }
 
@@ -306,11 +343,7 @@ fn run_doctor(args: &[String]) -> ExitCode {
         println!("  --json               schema_version=1 envelope (matches family convention)");
         return ExitCode::SUCCESS;
     }
-    let firmware_root = args
-        .iter()
-        .position(|a| a == "--firmware-root")
-        .and_then(|i| args.get(i + 1))
-        .map_or_else(|| PathBuf::from("/usr/share/OVMF"), PathBuf::from);
+    let firmware_root = flag_path_or(args, "--firmware-root", "/usr/share/OVMF");
     let json_mode = args.iter().any(|a| a == "--json");
     let report = aegis_hwsim::doctor::run(&firmware_root);
     if json_mode {
@@ -347,30 +380,32 @@ fn run_coverage_grid(args: &[String]) -> ExitCode {
         println!("  --firmware-root DIR    Override OVMF dir (default: /usr/share/OVMF)");
         return ExitCode::SUCCESS;
     }
-    let format = if args.iter().any(|a| a == "json") {
-        aegis_hwsim::coverage_grid::OutputFormat::Json
-    } else {
-        aegis_hwsim::coverage_grid::OutputFormat::Markdown
+    // Tight `--format VALUE` match: must be exactly "json" or
+    // "markdown". Default (no flag) is markdown. The previous
+    // `args.iter().any(|a| a == "json")` would silently default to
+    // markdown for any unknown value — which masks operator typos.
+    let format = match flag_value(args, "--format") {
+        None | Some("markdown") => aegis_hwsim::coverage_grid::OutputFormat::Markdown,
+        Some("json") => aegis_hwsim::coverage_grid::OutputFormat::Json,
+        Some(other) => {
+            eprintln!(
+                "aegis-hwsim coverage-grid: --format must be 'json' or 'markdown', got {other:?}"
+            );
+            return ExitCode::from(2);
+        }
     };
     let dry_run = args.iter().any(|a| a == "--dry-run");
 
-    let stick = args
-        .iter()
-        .position(|a| a == "--stick")
-        .and_then(|i| args.get(i + 1))
+    let stick = flag_value(args, "--stick")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("AEGIS_HWSIM_STICK").map(PathBuf::from))
         .unwrap_or_else(|| PathBuf::from("/no/stick/configured"));
 
-    let firmware_root = args
-        .iter()
-        .position(|a| a == "--firmware-root")
-        .and_then(|i| args.get(i + 1))
-        .map_or_else(|| PathBuf::from("/usr/share/OVMF"), PathBuf::from);
+    let firmware_root = flag_path_or(args, "--firmware-root", "/usr/share/OVMF");
 
     let personas = match load_or_report() {
         Ok(p) => p,
-        Err(code) => return ExitCode::from(code),
+        Err(code) => return code,
     };
     let registry = aegis_hwsim::scenario::Registry::default_set();
 
@@ -543,7 +578,7 @@ fn run_scenario(args: &[String]) -> ExitCode {
 
     let personas = match load_or_report() {
         Ok(p) => p,
-        Err(code) => return ExitCode::from(code),
+        Err(code) => return code,
     };
     let Some(persona) = personas.into_iter().find(|p| p.id == persona_id) else {
         eprintln!("aegis-hwsim run: persona '{persona_id}' not found");
@@ -559,11 +594,15 @@ fn run_scenario(args: &[String]) -> ExitCode {
     };
 
     let firmware_root = firmware_root.unwrap_or_else(|| PathBuf::from("/usr/share/OVMF"));
-    let work_dir = work_dir.unwrap_or_else(|| {
-        let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        cwd.join("work")
-            .join(format!("{persona_id}-{scenario_name}"))
-    });
+    let work_dir = match work_dir {
+        Some(p) => p,
+        None => match cwd_or_exit() {
+            Ok(cwd) => cwd
+                .join("work")
+                .join(format!("{persona_id}-{scenario_name}")),
+            Err(code) => return code,
+        },
+    };
 
     let ctx = aegis_hwsim::scenario::ScenarioContext {
         persona,
@@ -600,4 +639,73 @@ fn run_scenario(args: &[String]) -> ExitCode {
 /// just add a `aegis-hwsim:` prefix so it composes with shell piping.
 fn report_load_error(e: &LoadError) {
     eprintln!("aegis-hwsim: {e}");
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    use super::*;
+
+    fn argv(items: &[&str]) -> Vec<String> {
+        items.iter().map(|s| (*s).to_string()).collect()
+    }
+
+    #[test]
+    fn flag_value_returns_value_following_flag() {
+        let args = argv(&["--firmware-root", "/opt/ovmf", "--quiet"]);
+        assert_eq!(flag_value(&args, "--firmware-root"), Some("/opt/ovmf"));
+    }
+
+    #[test]
+    fn flag_value_returns_none_when_flag_absent() {
+        let args = argv(&["--quiet", "--json"]);
+        assert_eq!(flag_value(&args, "--firmware-root"), None);
+    }
+
+    #[test]
+    fn flag_value_returns_none_when_flag_is_last_token() {
+        // No value to consume after the trailing `--firmware-root`.
+        let args = argv(&["--quiet", "--firmware-root"]);
+        assert_eq!(flag_value(&args, "--firmware-root"), None);
+    }
+
+    #[test]
+    fn flag_value_does_not_match_substring_or_eq_form() {
+        // `--firmware-root-extra` and `--firmware-root=/opt/ovmf` must
+        // NOT match `--firmware-root`. The previous bug class was a
+        // substring/contains match that allowed `--format json-extra`
+        // to silently route into JSON mode.
+        let args = argv(&[
+            "--firmware-root-extra",
+            "/wrong",
+            "--firmware-root=/equals-form",
+        ]);
+        assert_eq!(flag_value(&args, "--firmware-root"), None);
+    }
+
+    #[test]
+    fn flag_path_or_returns_value_when_present() {
+        let args = argv(&["--firmware-root", "/opt/ovmf"]);
+        assert_eq!(
+            flag_path_or(&args, "--firmware-root", "/usr/share/OVMF"),
+            PathBuf::from("/opt/ovmf")
+        );
+    }
+
+    #[test]
+    fn flag_path_or_returns_default_when_flag_absent() {
+        let args = argv(&["--quiet"]);
+        assert_eq!(
+            flag_path_or(&args, "--firmware-root", "/usr/share/OVMF"),
+            PathBuf::from("/usr/share/OVMF")
+        );
+    }
+
+    #[test]
+    fn flag_value_picks_first_occurrence_when_repeated() {
+        // CLI doesn't define repeat semantics, but the contract should
+        // be deterministic. Document via test: first wins.
+        let args = argv(&["--firmware-root", "/first", "--firmware-root", "/second"]);
+        assert_eq!(flag_value(&args, "--firmware-root"), Some("/first"));
+    }
 }
