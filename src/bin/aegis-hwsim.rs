@@ -56,6 +56,7 @@ fn main() -> ExitCode {
         Some("list-scenarios") => run_list_scenarios(&args[1..]),
         Some("coverage-grid") => run_coverage_grid(&args[1..]),
         Some("doctor") => run_doctor(&args[1..]),
+        Some("gen-test-keyring") => run_gen_test_keyring(&args[1..]),
         Some("-h" | "--help" | "help") | None => {
             print_help();
             ExitCode::SUCCESS
@@ -96,6 +97,8 @@ fn print_help() {
     println!("                                      Emit persona × scenario grid");
     println!("  aegis-hwsim doctor [--firmware-root DIR]");
     println!("                                      Check host has qemu/swtpm/ovmf installed");
+    println!("  aegis-hwsim gen-test-keyring [--out DIR]");
+    println!("                                      Generate PK/KEK/db test keyring (E5)");
     println!("  aegis-hwsim --version               Print version");
     println!("  aegis-hwsim --help                  This message");
     println!();
@@ -639,6 +642,56 @@ fn run_scenario(args: &[String]) -> ExitCode {
 /// just add a `aegis-hwsim:` prefix so it composes with shell piping.
 fn report_load_error(e: &LoadError) {
     eprintln!("aegis-hwsim: {e}");
+}
+
+/// `aegis-hwsim gen-test-keyring` — produce the PK/KEK/db test keyring.
+///
+/// Exit codes: 0 = generated, 77 = skipped (required tool missing —
+/// matches the scenario-runner skip convention), 1 = generation
+/// failed for another reason (subprocess error, output dir I/O), 2 =
+/// usage error.
+fn run_gen_test_keyring(args: &[String]) -> ExitCode {
+    if matches!(args.first().map(String::as_str), Some("--help" | "-h")) {
+        println!("aegis-hwsim gen-test-keyring — generate the PK/KEK/db test keyring");
+        println!();
+        println!("USAGE:");
+        println!("  aegis-hwsim gen-test-keyring [--out DIR]");
+        println!();
+        println!("  --out DIR  Output directory (default: firmware/test-keyring/generated)");
+        println!();
+        println!("Every cert carries TEST_ONLY_NOT_FOR_PRODUCTION in its CN. The");
+        println!("output directory is .gitignored AND excluded from cargo package");
+        println!("(scripts/audit-no-test-keys.sh enforces this at publish time).");
+        return ExitCode::SUCCESS;
+    }
+    let mut opts = aegis_hwsim::test_keyring::GenerateOptions::default();
+    if let Some(out) = flag_value(args, "--out") {
+        opts.out_dir = PathBuf::from(out);
+    }
+    match aegis_hwsim::test_keyring::generate(&opts) {
+        Ok(paths) => {
+            println!(
+                "aegis-hwsim: test keyring written to {}",
+                opts.out_dir.display()
+            );
+            println!("  PK:  {}", paths.pk_auth.display());
+            println!("  KEK: {}", paths.kek_auth.display());
+            println!("  db:  {}", paths.db_auth.display());
+            println!();
+            println!("Next step: load these into an OVMF_VARS file (E5.1d, virt-fw-vars).");
+            ExitCode::SUCCESS
+        }
+        Err(aegis_hwsim::test_keyring::GenerateError::MissingTool { tool, hint }) => {
+            eprintln!("aegis-hwsim gen-test-keyring: SKIP — {tool} not on PATH");
+            eprintln!("  {hint}");
+            eprintln!("  Run `aegis-hwsim doctor` to see all E5 tooling probes.");
+            ExitCode::from(77)
+        }
+        Err(e) => {
+            eprintln!("aegis-hwsim gen-test-keyring: {e}");
+            ExitCode::from(1)
+        }
+    }
 }
 
 #[cfg(test)]

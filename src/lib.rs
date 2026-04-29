@@ -19,3 +19,4 @@ pub mod scenarios;
 pub mod serial;
 pub mod smbios;
 pub mod swtpm;
+pub mod test_keyring;
