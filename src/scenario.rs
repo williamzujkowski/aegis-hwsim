@@ -174,6 +174,7 @@ impl Registry {
         let mut r = Self::empty();
         r.register(Box::new(crate::scenarios::QemuBootsOvmf));
         r.register(Box::new(crate::scenarios::SignedBootUbuntu));
+        r.register(Box::new(crate::scenarios::KexecRefusesUnsigned));
         r
     }
 
@@ -294,13 +295,14 @@ tpm:
     #[test]
     fn registry_default_set_includes_shipped_scenarios() {
         // Pin the shipped scenario set. As more scenarios land in
-        // future epics (E5 MOK enrollment, E6 attestation, etc.),
-        // extend this assertion; the goal is to catch a registry
-        // regression that silently drops a published scenario name.
+        // future epics (E6 attestation, etc.), extend this assertion;
+        // the goal is to catch a registry regression that silently
+        // drops a published scenario name.
         let r = Registry::default_set();
-        assert_eq!(r.len(), 2);
+        assert_eq!(r.len(), 3);
         assert!(r.find("qemu-boots-ovmf").is_some());
         assert!(r.find("signed-boot-ubuntu").is_some());
+        assert!(r.find("kexec-refuses-unsigned").is_some());
     }
 
     #[test]
