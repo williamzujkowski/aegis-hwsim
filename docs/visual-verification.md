@@ -52,7 +52,23 @@ Pass `--usb /dev/disk/by-id/usb-...`. The block device is attached read-only via
 sudo ./scripts/visual-verify-boot.sh --usb /dev/disk/by-id/usb-SanDisk_Cruzer_4C530001240922109173-0:0
 ```
 
-QEMU's `readonly=on` is a host-side contract enforced by the QEMU process; it isn't a kernel-level write barrier. **Do not run this against a stick whose contents you can't afford to risk.** For routine harness work, the empty-stick mode is preferred — the existing Rust scenarios already exercise the qcow2/raw stick path, and visual verification doesn't need a real device to confirm the OVMF variant and framebuffer are wired correctly.
+QEMU's `readonly=on` is a host-side contract enforced by the QEMU process; it isn't a kernel-level write barrier. **Do not run this against a stick whose contents you can't afford to risk.** The existing Rust scenarios use a stick image file (qcow2/raw), not a real device — preferred for routine harness work. The real-USB mode exists specifically for operator-supervised end-to-end validation: confirm the harness's QEMU+OVMF args reproduce a real signed-rescue stick boot before trusting the matrix's no-screen serial-only assertions.
+
+### Reference run — real aegis-boot signed-rescue stick
+
+`docs/evidence/visual-verify-aegis-boot-stick-2026-04-29.png` is a known-good capture from a SanDisk Cruzer flashed with the aegis-boot signed-rescue stick. Expected screen:
+
+- Header: `GNU GRUB version 2.12`.
+- Three menu entries: `*aegis-boot rescue` (default, highlighted), `aegis-boot rescue (serial-primary)`, `aegis-boot rescue (verbose — first-boot debug)`.
+- `Use the ▲ and ▼ keys to select which entry is highlighted.`
+- `The highlighted entry will be executed automatically in 2s.`
+
+Why this matters: the screenshot proves the **entire signed-chain path works end-to-end** — OVMF Secure Boot loads `OVMF_CODE_4M.secboot.fd`, validates shim against the MS-enrolled keys in `OVMF_VARS_4M.ms.fd`, shim hands off to GRUB, GRUB renders its menu. The serial log (`docs/evidence/visual-verify-aegis-boot-stick-2026-04-29.serial.log`) confirms `EFI stub: UEFI Secure Boot is enabled.` — Secure Boot enforcement is on, not bypassed.
+
+Three things prove the screenshot isn't stubbed:
+- The menu entries (`aegis-boot rescue`, `aegis-boot rescue (serial-primary)`, etc.) are exact strings only the real aegis-boot grub.cfg produces.
+- The serial log shows `BdsDxe: starting Boot0001 "UEFI QEMU QEMU USB HARDDRIVE 1-0000:00:03.0-1"` — OVMF is launching from the actual USB controller address QEMU's `usb-ehci`+`usb-storage,drive=stick` chain assigns.
+- The serial log includes `EFI stub: Loaded initrd from LINUX_EFI_INITRD_MEDIA_GUID device path` — only a real signed kernel produces that line, and only when shim approved its signature against MS or shim-vendor keys.
 
 ## How the script works
 
@@ -64,15 +80,30 @@ QEMU's `readonly=on` is a host-side contract enforced by the QEMU process; it is
 6. Writes `metadata.json` so the screenshot is self-describing in archives.
 7. Greps the serial log for `BdsDxe` to confirm OVMF actually booted (not a black screen + dead firmware).
 
-## Pairing with the test-keyring generator
+## Pairing with the test-keyring generator (custom-PK visual mode)
 
-The visual-verify script doesn't currently boot OVMF with a custom-PK keyring loaded — the harness's path for that runs through `Invocation::new()` with the persona's `OvmfVariant::CustomPk`, not via this script. Once E5.1d (`virt-fw-vars` enrollment) lands, the recipe here will grow a `--vars-template <path>` flag so an operator can visually confirm a generated test keyring is being honored by OVMF.
+E5.1d added the `--enroll-into` flag to `gen-test-keyring`, and this script grew a matching `--vars-template <FILE>` flag. The two together let an operator visually confirm a generated test keyring is loaded by OVMF:
 
-For now, the workflow is:
+```bash
+# 1. Generate the keyring AND enroll it into a working OVMF_VARS file.
+./scripts/visual-verify-boot.sh --vars-template work/visual/custom-pk.fd
+aegis-hwsim gen-test-keyring \
+    --out firmware/test-keyring/generated \
+    --enroll-into work/visual/custom-pk.fd
 
-1. `aegis-hwsim gen-test-keyring --out firmware/test-keyring/generated/` — produces PK/KEK/db material.
-2. `./scripts/visual-verify-boot.sh` — confirms the *base* OVMF variant boots and shows TianoCore.
-3. Future (E5.1d): combine the two — boot with the custom-PK VARS, screenshot, confirm Secure Boot enforces the test keyring.
+# 2. Boot OVMF visually against the custom VARS file.
+./scripts/visual-verify-boot.sh --vars-template work/visual/custom-pk.fd
+```
+
+The screenshot's TianoCore logo will look identical (it's the same firmware), but `serial.log` and a manual `xxd` of the VARS file will show the test keyring's `aeae...` owner GUID — proving the custom PK is what OVMF will reach for during signature verification, rather than the Microsoft-enrolled keys.
+
+You can also combine `--vars-template` with `--usb` to verify a signed-rescue stick boots under the custom keyring:
+
+```bash
+sudo ./scripts/visual-verify-boot.sh \
+    --vars-template work/visual/custom-pk.fd \
+    --usb /dev/disk/by-id/usb-SanDisk_Cruzer_4C530001240922109173-0:0
+```
 
 ## Limitations
 

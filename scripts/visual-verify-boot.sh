@@ -45,6 +45,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 OVMF_DIR="${OVMF_DIR:-/usr/share/OVMF}"
 OVMF_CODE="${OVMF_DIR}/OVMF_CODE_4M.secboot.fd"
 OVMF_VARS="${OVMF_DIR}/OVMF_VARS_4M.ms.fd"
+VARS_TEMPLATE_OVERRIDE=""
 USB_DEVICE=""
 TIMEOUT_SECS=30
 
@@ -53,14 +54,17 @@ usage() {
 visual-verify-boot.sh — boot OVMF + capture screenshot at firmware banner.
 
 USAGE:
-  $0 [--ovmf-dir DIR] [--usb /dev/disk/by-id/usb-...] [--timeout N]
+  $0 [--ovmf-dir DIR] [--vars-template FILE] [--usb /dev/disk/by-id/usb-...] [--timeout N]
 
 OPTIONS:
-  --ovmf-dir DIR  Override OVMF dir (default: \$OVMF_DIR or /usr/share/OVMF)
-  --usb DEV       Pass through a real USB block device (read-only). Omit for
-                  empty-stick smoke mode (recommended for unattended runs).
-  --timeout N     Boot timeout in seconds (default: 30).
-  -h | --help     This message.
+  --ovmf-dir DIR        Override OVMF dir (default: \$OVMF_DIR or /usr/share/OVMF)
+  --vars-template FILE  Use this VARS template instead of OVMF_VARS_4M.ms.fd. Useful
+                        for booting against a custom-PK keyring produced by
+                        \`aegis-hwsim gen-test-keyring --enroll-into FILE\`.
+  --usb DEV             Pass through a real USB block device (read-only). Omit for
+                        empty-stick smoke mode (recommended for unattended runs).
+  --timeout N           Boot timeout in seconds (default: 30).
+  -h | --help           This message.
 
 OUTPUT under work/visual/<timestamp>/:
   screen.ppm     - raw framebuffer
@@ -72,13 +76,26 @@ EOF
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --ovmf-dir)  OVMF_DIR="$2"; OVMF_CODE="${OVMF_DIR}/OVMF_CODE_4M.secboot.fd"; OVMF_VARS="${OVMF_DIR}/OVMF_VARS_4M.ms.fd"; shift 2 ;;
+        --ovmf-dir)
+            OVMF_DIR="$2"
+            OVMF_CODE="${OVMF_DIR}/OVMF_CODE_4M.secboot.fd"
+            OVMF_VARS="${OVMF_DIR}/OVMF_VARS_4M.ms.fd"
+            shift 2 ;;
+        --vars-template)
+            VARS_TEMPLATE_OVERRIDE="$2"
+            shift 2 ;;
         --usb)       USB_DEVICE="$2"; shift 2 ;;
         --timeout)   TIMEOUT_SECS="$2"; shift 2 ;;
         -h|--help)   usage; exit 0 ;;
         *)           echo "visual-verify-boot: unknown arg '$1'" >&2; usage >&2; exit 2 ;;
     esac
 done
+
+# Resolve the actual VARS template after argv parsing so --vars-template
+# overrides any --ovmf-dir-derived default cleanly.
+if [[ -n "$VARS_TEMPLATE_OVERRIDE" ]]; then
+    OVMF_VARS="$VARS_TEMPLATE_OVERRIDE"
+fi
 
 # 1) Tooling probes.
 for tool in qemu-system-x86_64 python3; do
@@ -226,6 +243,7 @@ cat > "${OUT_DIR}/metadata.json" <<JSON
   "ovmf_dir": "${OVMF_DIR}",
   "ovmf_code": "${OVMF_CODE}",
   "ovmf_vars": "${OVMF_VARS}",
+  "vars_template_override": "${VARS_TEMPLATE_OVERRIDE}",
   "usb_device": "${USB_DEVICE}",
   "timeout_secs": ${TIMEOUT_SECS},
   "screen_ppm": "screen.ppm",

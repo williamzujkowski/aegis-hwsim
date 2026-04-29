@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "tool": "aegis-hwsim/visual-verify-boot.sh",
+  "captured_at": "20260429T100817Z",
+  "stick_mode": "real-usb-readonly",
+  "ovmf_dir": "/usr/share/OVMF",
+  "ovmf_code": "/usr/share/OVMF/OVMF_CODE_4M.secboot.fd",
+  "ovmf_vars": "/usr/share/OVMF/OVMF_VARS_4M.ms.fd",
+  "vars_template_override": "",
+  "usb_device": "/dev/disk/by-id/usb-SanDisk_Cruzer_4C530001240922109173-0:0",
+  "timeout_secs": 30,
+  "screen_ppm": "screen.ppm",
+  "screen_png": "screen.png",
+  "serial_log": "serial.log"
+}
