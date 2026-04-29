@@ -124,6 +124,26 @@ pub enum LoadError {
         #[source]
         source: std::io::Error,
     },
+
+    /// `secure_boot.custom_keyring` is set on a persona whose
+    /// `ovmf_variant` isn't `custom_pk`. Catches the easy mistake
+    /// flagged in `docs/research/gotchas.md#6` — using an MS-enrolled
+    /// or blank VARs template while still pointing at a custom keyring
+    /// makes the test a no-op against pre-enrolled keys.
+    /// Per E5 (#5) "validate rejects `ovmf_variant`: `setup_mode` personas
+    /// whose runner config doesn't point at an empty-state VARs path".
+    #[error(
+        "{path:?}: custom_keyring is only valid when ovmf_variant=custom_pk; \
+         got ovmf_variant={variant:?} with custom_keyring={keyring:?}"
+    )]
+    CustomKeyringWithWrongVariant {
+        /// Path of the persona YAML with the inconsistency.
+        path: PathBuf,
+        /// The keyring path that shouldn't be there.
+        keyring: PathBuf,
+        /// The variant that was set.
+        variant: crate::persona::OvmfVariant,
+    },
 }
 
 /// Options for `load_all`. Split from args so callers can extend without
@@ -241,6 +261,22 @@ fn load_one(path: &Path, opts: &LoadOptions) -> Result<Persona, LoadError> {
     // Guard 4: custom_keyring path-traversal.
     if let Some(keyring) = &persona.secure_boot.custom_keyring {
         check_custom_keyring(path, keyring, &opts.firmware_root)?;
+    }
+
+    // Guard 5: custom_keyring is only meaningful for ovmf_variant=custom_pk.
+    // For ms_enrolled, setup_mode, and disabled the runtime picks a
+    // template VARs file in src/ovmf.rs and silently ignores any
+    // custom_keyring on the persona — that's a footgun per
+    // docs/research/gotchas.md#6 (operator thinks they're testing key
+    // enrollment but is observing a no-op against pre-enrolled keys).
+    if let Some(keyring) = &persona.secure_boot.custom_keyring {
+        if persona.secure_boot.ovmf_variant != crate::persona::OvmfVariant::CustomPk {
+            return Err(LoadError::CustomKeyringWithWrongVariant {
+                path: path.to_path_buf(),
+                keyring: keyring.clone(),
+                variant: persona.secure_boot.ovmf_variant,
+            });
+        }
     }
 
     Ok(persona)
@@ -610,6 +646,49 @@ tpm:
                 assert_eq!(root, firmware);
             }
             other => panic!("expected FirmwareRootMissing, got {other:?}"),
+        }
+    }
+
+    /// Setting `custom_keyring` on a non-custom_pk variant is a footgun
+    /// per `docs/research/gotchas.md#6` — operators think they're
+    /// testing key enrollment but are running a no-op against
+    /// pre-enrolled keys. The loader rejects it explicitly.
+    /// Each non-custom_pk variant gets its own assertion so a future
+    /// refactor that allowlists one variant doesn't silently allow
+    /// the others too.
+    #[test]
+    fn custom_keyring_with_non_custom_pk_variant_is_rejected() {
+        use crate::persona::OvmfVariant;
+        for (variant_yaml, expected) in [
+            ("ms_enrolled", OvmfVariant::MsEnrolled),
+            ("setup_mode", OvmfVariant::SetupMode),
+            ("disabled", OvmfVariant::Disabled),
+        ] {
+            let (_tmp, opts) = tmp_opts();
+            // Place a real keyring file under firmware_root so
+            // canonicalize succeeds — the test must isolate the
+            // wrong-variant guard from the missing-file guard.
+            let keyring = opts.firmware_root.join("real-keyring.fd");
+            fs::write(&keyring, b"placeholder").unwrap();
+            let body = minimal_yaml("wrongvar").replace(
+                "secure_boot:\n  ovmf_variant: ms_enrolled\n",
+                &format!(
+                    "secure_boot:\n  ovmf_variant: {variant_yaml}\n  custom_keyring: real-keyring.fd\n"
+                ),
+            );
+            write(&opts.personas_dir, "wrongvar.yaml", &body);
+            let err = load_all(&opts).unwrap_err();
+            match err {
+                LoadError::CustomKeyringWithWrongVariant { variant, .. } => {
+                    assert_eq!(
+                        variant, expected,
+                        "variant in error should match the persona's ovmf_variant"
+                    );
+                }
+                other => panic!(
+                    "expected CustomKeyringWithWrongVariant for {variant_yaml}, got {other:?}"
+                ),
+            }
         }
     }
 
