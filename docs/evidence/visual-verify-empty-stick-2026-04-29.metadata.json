@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "tool": "aegis-hwsim/visual-verify-boot.sh",
+  "captured_at": "20260429T032257Z",
+  "stick_mode": "empty-1mib-pseudo-random",
+  "ovmf_dir": "/usr/share/OVMF",
+  "ovmf_code": "/usr/share/OVMF/OVMF_CODE_4M.secboot.fd",
+  "ovmf_vars": "/usr/share/OVMF/OVMF_VARS_4M.ms.fd",
+  "usb_device": "",
+  "timeout_secs": 25,
+  "screen_ppm": "screen.ppm",
+  "screen_png": "screen.png",
+  "serial_log": "serial.log"
+}
