@@ -216,6 +216,12 @@ pub fn run(firmware_root: &Path) -> Report {
             "Debian: apt install efitools. Converts X.509 certs into UEFI \
              signature lists for OVMF VARS enrollment (E5 keyring generator).",
         ),
+        check_binary(
+            "virt-fw-vars",
+            Verdict::Warn,
+            "Debian: apt install python3-virt-firmware. Loads the generated \
+             PK/KEK/db into a working OVMF_VARS file (E5.1d enrollment step).",
+        ),
         // OVMF firmware files.
         check_firmware_file(
             firmware_root,
@@ -462,7 +468,7 @@ mod tests {
         let (_tmp, root) = fake_firmware_root();
         let r = run(&root);
         let subjects: Vec<&str> = r.checks.iter().map(|c| c.subject.as_str()).collect();
-        for tool in ["openssl", "sbsign", "cert-to-efi-sig-list"] {
+        for tool in ["openssl", "sbsign", "cert-to-efi-sig-list", "virt-fw-vars"] {
             assert!(
                 subjects.contains(&tool),
                 "doctor must probe {tool} (got subjects: {subjects:?})"

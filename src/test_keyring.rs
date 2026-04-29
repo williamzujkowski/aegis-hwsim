@@ -180,6 +180,27 @@ pub enum GenerateError {
         /// stderr or spawn error rendered as a single string.
         detail: String,
     },
+
+    /// The OVMF VARS template doesn't exist on disk. Surfaced as a
+    /// distinct variant from `OutputDir` so the operator's error
+    /// message can point at the missing template path specifically.
+    #[error("ovmf vars template {path:?} not readable: {source}")]
+    VarsTemplateMissing {
+        /// The expected template path.
+        path: PathBuf,
+        /// Underlying filesystem error.
+        #[source]
+        source: std::io::Error,
+    },
+}
+
+/// Result of a successful [`enroll_into_vars`] call. Wraps the
+/// canonical path to the produced custom-PK OVMF VARS file so callers
+/// don't have to re-derive it from the input options.
+#[derive(Debug, Clone)]
+pub struct EnrolledVars {
+    /// The output OVMF VARS file with PK/KEK/db enrolled.
+    pub vars_out: PathBuf,
 }
 
 /// Generate the full PK/KEK/db keyring under `opts.out_dir`. Returns
@@ -235,6 +256,80 @@ pub fn generate(opts: &GenerateOptions) -> Result<KeyringPaths, GenerateError> {
     write_readme(opts)?;
 
     Ok(KeyringPaths::new(&opts.out_dir))
+}
+
+/// Enroll the previously-[generated][generate] PK/KEK/db certificates
+/// into a working `OVMF_VARS` file via `virt-fw-vars`. Produces the
+/// VARS blob that an operator can pass to QEMU as the `-drive
+/// if=pflash,unit=1` parameter to boot OVMF in custom-PK mode.
+///
+/// The pipeline:
+///
+/// ```text
+/// virt-fw-vars -i <template> \
+///     --set-pk <GUID> <PK.crt> \
+///     --add-kek <GUID> <KEK.crt> \
+///     --add-db <GUID> <db.crt> \
+///     -o <vars_out>
+/// ```
+///
+/// The `template` should be Debian's `OVMF_VARS_4M.fd` (the empty,
+/// no-PK template) or any setup-mode-equivalent. Using the
+/// `OVMF_VARS_4M.ms.fd` template would also work but defeats the
+/// purpose — that already has Microsoft-enrolled keys.
+///
+/// # Errors
+///
+/// * [`GenerateError::MissingTool`] if `virt-fw-vars` isn't on PATH.
+/// * [`GenerateError::VarsTemplateMissing`] if `template` doesn't exist.
+/// * [`GenerateError::Subprocess`] if `virt-fw-vars` exits non-zero.
+pub fn enroll_into_vars(
+    keyring: &KeyringPaths,
+    template: &Path,
+    vars_out: &Path,
+    owner_guid: &str,
+) -> Result<EnrolledVars, GenerateError> {
+    require_tool("virt-fw-vars", "Debian: apt install python3-virt-firmware")?;
+
+    // Probe the template before invoking virt-fw-vars so the operator
+    // gets a clean error pointing at the offending path. virt-fw-vars
+    // reports its own error but doesn't surface the path verbatim,
+    // and it does so via stderr that we'd then have to pattern-match.
+    let template_meta =
+        std::fs::metadata(template).map_err(|source| GenerateError::VarsTemplateMissing {
+            path: template.to_path_buf(),
+            source,
+        })?;
+    if !template_meta.is_file() {
+        return Err(GenerateError::VarsTemplateMissing {
+            path: template.to_path_buf(),
+            source: std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "ovmf vars template is not a regular file",
+            ),
+        });
+    }
+
+    let args: Vec<String> = vec![
+        "-i".into(),
+        template.display().to_string(),
+        "--set-pk".into(),
+        owner_guid.to_string(),
+        keyring.pk_crt.display().to_string(),
+        "--add-kek".into(),
+        owner_guid.to_string(),
+        keyring.kek_crt.display().to_string(),
+        "--add-db".into(),
+        owner_guid.to_string(),
+        keyring.db_crt.display().to_string(),
+        "-o".into(),
+        vars_out.display().to_string(),
+    ];
+    run("virt-fw-vars", &args)?;
+
+    Ok(EnrolledVars {
+        vars_out: vars_out.to_path_buf(),
+    })
 }
 
 /// Resolved paths to each role's artifacts. Returned by [`generate`]
@@ -561,6 +656,78 @@ mod tests {
         assert!(
             subject.contains(TEST_ONLY_MARKER),
             "PK cert subject {subject:?} must contain {TEST_ONLY_MARKER}"
+        );
+    }
+
+    /// `enroll_into_vars` reports a clean error (not a subprocess
+    /// failure) when the OVMF VARS template doesn't exist.
+    #[test]
+    fn enroll_rejects_missing_template() {
+        // Don't actually require virt-fw-vars for this test — we
+        // bypass the tool probe by feeding an obviously-missing
+        // template. require_tool runs FIRST though, so the error
+        // surfaced here depends on whether virt-fw-vars is on PATH.
+        // To keep the test deterministic across CI environments,
+        // we accept either MissingTool OR VarsTemplateMissing.
+        let paths = KeyringPaths::new(&PathBuf::from("/tmp/unused"));
+        let result = enroll_into_vars(
+            &paths,
+            &PathBuf::from("/no/such/template.fd"),
+            &PathBuf::from("/tmp/unused-out.fd"),
+            "aeaeaeae-aeae-4aea-aeae-aeaeaeaeaeae",
+        );
+        match result {
+            Err(GenerateError::MissingTool { tool, .. }) => {
+                assert_eq!(tool, "virt-fw-vars");
+            }
+            Err(GenerateError::VarsTemplateMissing { path, .. }) => {
+                assert_eq!(path, PathBuf::from("/no/such/template.fd"));
+            }
+            other => panic!("expected MissingTool or VarsTemplateMissing, got {other:?}"),
+        }
+    }
+
+    /// Full enrollment E2E: generate the keyring AND load it into a
+    /// real OVMF VARS file via virt-fw-vars. Self-skips if any of
+    /// openssl / efitools / virt-fw-vars / Debian OVMF is missing.
+    #[test]
+    fn enroll_produces_loadable_vars_file() {
+        if which_on_path("openssl").is_none()
+            || which_on_path("cert-to-efi-sig-list").is_none()
+            || which_on_path("sign-efi-sig-list").is_none()
+            || which_on_path("virt-fw-vars").is_none()
+        {
+            eprintln!("skipping: full E5 toolchain (openssl + efitools + virt-fw-vars) required");
+            return;
+        }
+        let template = PathBuf::from("/usr/share/OVMF/OVMF_VARS_4M.fd");
+        if !template.is_file() {
+            eprintln!("skipping: /usr/share/OVMF/OVMF_VARS_4M.fd not present (apt install ovmf)");
+            return;
+        }
+
+        let tmp = tempfile::tempdir().unwrap();
+        let opts = GenerateOptions {
+            out_dir: tmp.path().to_path_buf(),
+            validity_days: 30,
+            ..Default::default()
+        };
+        let paths = generate(&opts).expect("generate must succeed");
+
+        let vars_out = tmp.path().join("custom-pk.fd");
+        let enrolled = enroll_into_vars(&paths, &template, &vars_out, &opts.owner_guid)
+            .expect("enroll_into_vars must succeed when toolchain is present");
+
+        assert_eq!(enrolled.vars_out, vars_out);
+        assert!(vars_out.is_file(), "vars_out file must exist");
+        // OVMF_VARS_4M is exactly 540672 bytes (528 KiB) on Debian.
+        // virt-fw-vars produces an output of the same size — if it
+        // differs, the format is wrong and OVMF will reject it.
+        let template_size = std::fs::metadata(&template).unwrap().len();
+        let out_size = std::fs::metadata(&vars_out).unwrap().len();
+        assert_eq!(
+            out_size, template_size,
+            "enrolled VARS file must match template size (got {out_size}, expected {template_size})"
         );
     }
 }

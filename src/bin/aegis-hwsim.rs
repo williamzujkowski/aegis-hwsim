@@ -646,6 +646,11 @@ fn report_load_error(e: &LoadError) {
 
 /// `aegis-hwsim gen-test-keyring` — produce the PK/KEK/db test keyring.
 ///
+/// With `--enroll-into <vars-out>`, also load the generated keyring
+/// into a working `OVMF_VARS` file via `virt-fw-vars` (E5.1d). The
+/// template defaults to `/usr/share/OVMF/OVMF_VARS_4M.fd` (Debian's
+/// blank/no-PK template); override with `--vars-template`.
+///
 /// Exit codes: 0 = generated, 77 = skipped (required tool missing —
 /// matches the scenario-runner skip convention), 1 = generation
 /// failed for another reason (subprocess error, output dir I/O), 2 =
@@ -655,9 +660,16 @@ fn run_gen_test_keyring(args: &[String]) -> ExitCode {
         println!("aegis-hwsim gen-test-keyring — generate the PK/KEK/db test keyring");
         println!();
         println!("USAGE:");
-        println!("  aegis-hwsim gen-test-keyring [--out DIR]");
+        println!("  aegis-hwsim gen-test-keyring [--out DIR] [--enroll-into FILE] \\");
+        println!("    [--vars-template FILE]");
         println!();
-        println!("  --out DIR  Output directory (default: firmware/test-keyring/generated)");
+        println!(
+            "  --out DIR             Output directory (default: firmware/test-keyring/generated)"
+        );
+        println!("  --enroll-into FILE    Also produce a custom-PK OVMF_VARS file at FILE");
+        println!("                        (E5.1d, requires virt-fw-vars).");
+        println!("  --vars-template FILE  OVMF_VARS template to enroll into");
+        println!("                        (default: /usr/share/OVMF/OVMF_VARS_4M.fd)");
         println!();
         println!("Every cert carries TEST_ONLY_NOT_FOR_PRODUCTION in its CN. The");
         println!("output directory is .gitignored AND excluded from cargo package");
@@ -668,29 +680,72 @@ fn run_gen_test_keyring(args: &[String]) -> ExitCode {
     if let Some(out) = flag_value(args, "--out") {
         opts.out_dir = PathBuf::from(out);
     }
-    match aegis_hwsim::test_keyring::generate(&opts) {
-        Ok(paths) => {
-            println!(
-                "aegis-hwsim: test keyring written to {}",
-                opts.out_dir.display()
-            );
-            println!("  PK:  {}", paths.pk_auth.display());
-            println!("  KEK: {}", paths.kek_auth.display());
-            println!("  db:  {}", paths.db_auth.display());
-            println!();
-            println!("Next step: load these into an OVMF_VARS file (E5.1d, virt-fw-vars).");
-            ExitCode::SUCCESS
-        }
+    let enroll_into = flag_value(args, "--enroll-into").map(PathBuf::from);
+    let vars_template = flag_path_or(args, "--vars-template", "/usr/share/OVMF/OVMF_VARS_4M.fd");
+
+    let paths = match aegis_hwsim::test_keyring::generate(&opts) {
+        Ok(p) => p,
         Err(aegis_hwsim::test_keyring::GenerateError::MissingTool { tool, hint }) => {
             eprintln!("aegis-hwsim gen-test-keyring: SKIP — {tool} not on PATH");
             eprintln!("  {hint}");
             eprintln!("  Run `aegis-hwsim doctor` to see all E5 tooling probes.");
-            ExitCode::from(77)
+            return ExitCode::from(77);
         }
         Err(e) => {
             eprintln!("aegis-hwsim gen-test-keyring: {e}");
-            ExitCode::from(1)
+            return ExitCode::from(1);
         }
+    };
+
+    println!(
+        "aegis-hwsim: test keyring written to {}",
+        opts.out_dir.display()
+    );
+    println!("  PK:  {}", paths.pk_auth.display());
+    println!("  KEK: {}", paths.kek_auth.display());
+    println!("  db:  {}", paths.db_auth.display());
+
+    if let Some(vars_out) = enroll_into {
+        match aegis_hwsim::test_keyring::enroll_into_vars(
+            &paths,
+            &vars_template,
+            &vars_out,
+            &opts.owner_guid,
+        ) {
+            Ok(enrolled) => {
+                println!();
+                println!("aegis-hwsim: enrolled custom-PK OVMF_VARS:");
+                println!("  template: {}", vars_template.display());
+                println!("  output:   {}", enrolled.vars_out.display());
+                println!();
+                println!("Boot in QEMU with:");
+                println!(
+                    "  -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.secboot.fd \\"
+                );
+                println!(
+                    "  -drive if=pflash,format=raw,file={}",
+                    enrolled.vars_out.display()
+                );
+                ExitCode::SUCCESS
+            }
+            Err(aegis_hwsim::test_keyring::GenerateError::MissingTool { tool, hint }) => {
+                eprintln!();
+                eprintln!(
+                    "aegis-hwsim gen-test-keyring: keyring generated, but enrollment SKIPPED"
+                );
+                eprintln!("  {tool} not on PATH ({hint})");
+                ExitCode::from(77)
+            }
+            Err(e) => {
+                eprintln!("aegis-hwsim gen-test-keyring: enrollment failed: {e}");
+                ExitCode::from(1)
+            }
+        }
+    } else {
+        println!();
+        println!("Next step: pass --enroll-into <vars-out> to also produce a working OVMF_VARS,");
+        println!("           or invoke virt-fw-vars manually (see firmware/test-keyring/generated/README.md).");
+        ExitCode::SUCCESS
     }
 }
 
