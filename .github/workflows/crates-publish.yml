@@ -54,6 +54,22 @@ jobs:
           rustup default 1.85.0
           rustc --version
 
+      - name: Audit — refuse publish if test keyring material would ship
+        # CLAUDE.md security constraint #4: PK/KEK/db with
+        # TEST_ONLY_NOT_FOR_PRODUCTION CN must never ship to crates.io.
+        # The audit script checks two things:
+        #   1. Cargo.toml exclude list still keeps firmware/test-keyring/**
+        #      out of the package (drift detection).
+        #   2. No suspicious-extension file (.fd .pem .key .crt .der .cer
+        #      .efi .esl .auth, anything under firmware/) carries the
+        #      placeholder token.
+        # Source/doc/test-fixture references to the token are allowed
+        # (the token IS the policy enforcement constant).
+        # Runs BEFORE OIDC mint so a positive failure doesn't burn a
+        # crates.io short-lived token.
+        timeout-minutes: 2
+        run: ./scripts/audit-no-test-keys.sh
+
       - name: Mint short-lived crates.io token (OIDC)
         uses: rust-lang/crates-io-auth-action@v1
         id: cio_auth
