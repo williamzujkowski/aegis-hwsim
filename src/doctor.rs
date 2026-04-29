@@ -180,49 +180,70 @@ fn json_escape(s: &str) -> String {
 /// 0, ALL PASS → 0).
 #[must_use]
 pub fn run(firmware_root: &Path) -> Report {
-    let mut checks = Vec::with_capacity(8);
-
-    // Required binaries.
-    checks.push(check_binary(
-        "qemu-system-x86_64",
-        Verdict::Fail,
-        "Debian: apt install qemu-system-x86. Required for every scenario.",
-    ));
-    checks.push(check_binary(
-        "swtpm",
-        Verdict::Warn,
-        "Debian: apt install swtpm. Only no-TPM scenarios (qemu-boots-ovmf) \
-         can run without it; persona-driven TPM scenarios will Skip.",
-    ));
-
-    // OVMF firmware files.
-    checks.push(check_firmware_file(
-        firmware_root,
-        "OVMF_CODE_4M.secboot.fd",
-        Verdict::Fail,
-        "Debian: apt install ovmf. Required for any Secure-Boot scenario.",
-    ));
-    checks.push(check_firmware_file(
-        firmware_root,
-        "OVMF_VARS_4M.ms.fd",
-        Verdict::Fail,
-        "Debian: apt install ovmf (provides the MS-enrolled VARS template).",
-    ));
-    checks.push(check_firmware_file(
-        firmware_root,
-        "OVMF_CODE_4M.fd",
-        Verdict::Warn,
-        "Optional: needed only by personas with ovmf_variant=disabled.",
-    ));
-    checks.push(check_firmware_file(
-        firmware_root,
-        "OVMF_VARS_4M.fd",
-        Verdict::Warn,
-        "Optional: needed by personas with ovmf_variant=setup_mode or =disabled.",
-    ));
-
-    // Persona library presence.
-    checks.push(check_personas_dir(Path::new("personas")));
+    let checks = vec![
+        // Required binaries.
+        check_binary(
+            "qemu-system-x86_64",
+            Verdict::Fail,
+            "Debian: apt install qemu-system-x86. Required for every scenario.",
+        ),
+        check_binary(
+            "swtpm",
+            Verdict::Warn,
+            "Debian: apt install swtpm. Only no-TPM scenarios (qemu-boots-ovmf) \
+             can run without it; persona-driven TPM scenarios will Skip.",
+        ),
+        // E5 (MOK + unsigned-kexec) tooling. Probed at Warn severity:
+        // missing tools mean the test-keyring generator and the custom-PK
+        // / setup-mode flow can't run, but the existing scenarios are
+        // unaffected. Operators see the diagnostic before they hit the
+        // Skip in a scenario.
+        check_binary(
+            "openssl",
+            Verdict::Warn,
+            "Debian: apt install openssl. Needed by `aegis-hwsim gen-test-keyring` \
+             to mint custom-PK + setup-mode test keyrings (E5 scenarios).",
+        ),
+        check_binary(
+            "sbsign",
+            Verdict::Warn,
+            "Debian: apt install sbsigntool. Provides `sbsign`/`sbverify` for \
+             signing EFI binaries against the test keyring (E5 scenarios).",
+        ),
+        check_binary(
+            "cert-to-efi-sig-list",
+            Verdict::Warn,
+            "Debian: apt install efitools. Converts X.509 certs into UEFI \
+             signature lists for OVMF VARS enrollment (E5 keyring generator).",
+        ),
+        // OVMF firmware files.
+        check_firmware_file(
+            firmware_root,
+            "OVMF_CODE_4M.secboot.fd",
+            Verdict::Fail,
+            "Debian: apt install ovmf. Required for any Secure-Boot scenario.",
+        ),
+        check_firmware_file(
+            firmware_root,
+            "OVMF_VARS_4M.ms.fd",
+            Verdict::Fail,
+            "Debian: apt install ovmf (provides the MS-enrolled VARS template).",
+        ),
+        check_firmware_file(
+            firmware_root,
+            "OVMF_CODE_4M.fd",
+            Verdict::Warn,
+            "Optional: needed only by personas with ovmf_variant=disabled.",
+        ),
+        check_firmware_file(
+            firmware_root,
+            "OVMF_VARS_4M.fd",
+            Verdict::Warn,
+            "Optional: needed by personas with ovmf_variant=setup_mode or =disabled.",
+        ),
+        // Persona library presence.
+        check_personas_dir(Path::new("personas")),
+    ];
 
     Report { checks }
 }
@@ -430,6 +451,33 @@ mod tests {
         let c = check_binary("definitely-not-a-binary-xyz-doctor", Verdict::Warn, "fix");
         assert_eq!(c.verdict, Verdict::Warn);
         assert!(c.message.contains("not on PATH"));
+    }
+
+    #[test]
+    fn run_emits_e5_tool_probes_at_warn_severity() {
+        // The E5 tools (openssl, sbsign, cert-to-efi-sig-list) are
+        // probed but not required for current scenarios — missing
+        // must be Warn, never Fail, and the message must point the
+        // operator at the install package.
+        let (_tmp, root) = fake_firmware_root();
+        let r = run(&root);
+        let subjects: Vec<&str> = r.checks.iter().map(|c| c.subject.as_str()).collect();
+        for tool in ["openssl", "sbsign", "cert-to-efi-sig-list"] {
+            assert!(
+                subjects.contains(&tool),
+                "doctor must probe {tool} (got subjects: {subjects:?})"
+            );
+            // Whether the local CI runner has the tool or not, severity
+            // must never be Fail — these are E5 prerequisites only.
+            let c = r.checks.iter().find(|c| c.subject == tool).unwrap();
+            assert_ne!(
+                c.verdict,
+                Verdict::Fail,
+                "{tool} must not be a hard Fail; got {:?} ({})",
+                c.verdict,
+                c.message
+            );
+        }
     }
 
     #[test]
