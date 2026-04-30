@@ -10,7 +10,7 @@
      and exercises a `cargo publish --dry-run`-equivalent on every CI run via
      the `cargo-package-dry-run` step in ci.yml. -->
 
-**Status:** Phase 2 + E5 (MOK + unsigned-kexec) structurally complete (v0.0.2, 2026-04-29) — 11 personas covering all 4 OVMF variants and all 3 TPM versions, 4 scenarios (`qemu-boots-ovmf` smoke + `signed-boot-ubuntu` end-to-end + `kexec-refuses-unsigned` + `mok-enroll-alpine`), coverage-grid artifact per PR, ~140 tests including 60k-input fuzz per CI run, CodeQL static analysis enabled. Tracks [aegis-boot#226](https://github.com/williamzujkowski/aegis-boot/issues/226); next phases tracked in [#5](https://github.com/williamzujkowski/aegis-hwsim/issues/5) / [#6](https://github.com/williamzujkowski/aegis-hwsim/issues/6) / [#7](https://github.com/williamzujkowski/aegis-hwsim/issues/7).
+**Status:** Phase 2 + E5 (MOK + unsigned-kexec) + E6 attestation roundtrip structurally complete (v0.0.2, 2026-04-29) — 11 personas covering all 4 OVMF variants and all 3 TPM versions, 5 scenarios (`qemu-boots-ovmf` smoke + `signed-boot-ubuntu` end-to-end + `kexec-refuses-unsigned` + `mok-enroll-alpine` + `attestation-roundtrip`), coverage-grid artifact per PR, ~150 tests including 60k-input fuzz per CI run, CodeQL static analysis enabled. Tracks [aegis-boot#226](https://github.com/williamzujkowski/aegis-boot/issues/226); next phases tracked in [#5](https://github.com/williamzujkowski/aegis-hwsim/issues/5) / [#6](https://github.com/williamzujkowski/aegis-hwsim/issues/6) / [#7](https://github.com/williamzujkowski/aegis-hwsim/issues/7).
 
 A test harness that parameterizes **QEMU + OVMF + swtpm** over a matrix of **hardware personas** — YAML fixtures matching real shipping laptops/workstations — so [aegis-boot](https://github.com/williamzujkowski/aegis-boot)'s UEFI-Secure-Boot-preserving USB-rescue-stick flow can be validated across ~100 configurations without waiting on physical Framework / ThinkPad / Dell / HP / ASUS hardware.
 
@@ -155,16 +155,35 @@ OVMF variant matrix coverage today: **4 of 4** — `ms_enrolled` (8 personas), `
 
 All vendor-docs source citations are flagged PLACEHOLDER pending a real community hardware-report. See `personas/*.yaml` for the per-persona quirks captured (boot-key F8/F9/F12, vendor-specific MOK Manager rendering, AMD fTPM stuttering errata, TPM 1.2 SHA-1-only PCR bank, etc.).
 
-### Scenarios (4 shipped today)
+### Scenarios (5 shipped today)
 
 | Name | Asserts | Needs | Runs on CI? |
 |------|---------|-------|---|
 | `qemu-boots-ovmf` | OVMF emits `BdsDxe` boot-selector marker | qemu + ovmf | Yes — runs against `qemu-smoke-no-tpm` every PR |
 | `signed-boot-ubuntu` | Full chain: shim → grub → kernel → kexec | qemu + ovmf + swtpm + signed `aegis-boot.img` | Skipped on CI (no signed stick artifact yet) |
-| `kexec-refuses-unsigned` | Under enforcing SB + lockdown, an unsigned `kexec_file_load` is rejected with `EKEYREJECTED` and rescue-tui surfaces its diagnostic | qemu + ovmf + swtpm + signed stick + aegis-boot rescue-tui [test-mode hook](https://github.com/aegis-boot/aegis-boot/issues/675) | Skipped pending the rescue-tui companion |
-| `mok-enroll-alpine` | Booting Alpine (unsigned) under MS-enrolled SB triggers the rescue-tui MOK walkthrough; STEP 1/3's literal `sudo mokutil --import` appears verbatim per [aegis-boot#202](https://github.com/aegis-boot/aegis-boot/pull/202) | qemu + ovmf + signed stick + Alpine ISO entry [companion](https://github.com/aegis-boot/aegis-boot/issues/676) | Skipped pending the stick-side companion |
+| `kexec-refuses-unsigned` | Under enforcing SB + lockdown, an unsigned `kexec_file_load` is rejected with `EKEYREJECTED` and rescue-tui surfaces its `REJECTED (...)` diagnostic | qemu + ovmf + swtpm + signed stick flashed with `MKUSB_TEST_MODE=kexec-unsigned` (aegis-boot [#675](https://github.com/aegis-boot/aegis-boot/issues/675) + [#680](https://github.com/aegis-boot/aegis-boot/pull/680)) | Skipped on default-flashed sticks; Pass on test-mode-flashed sticks |
+| `mok-enroll-alpine` | Booting under MS-enrolled SB triggers the rescue-tui MOK walkthrough; STEP 1/3's literal `sudo mokutil --import` appears verbatim per [aegis-boot#202](https://github.com/aegis-boot/aegis-boot/pull/202) | qemu + ovmf + signed stick flashed with `MKUSB_TEST_MODE=mok-enroll` (aegis-boot [#676](https://github.com/aegis-boot/aegis-boot/issues/676) + [#681](https://github.com/aegis-boot/aegis-boot/pull/681)) | Skipped on default-flashed sticks; Pass on test-mode-flashed sticks |
+| `attestation-roundtrip` | Rescue-tui mounts the ESP, parses the on-stick manifest via `aegis-wire-formats::Manifest`, and (when populated) compares each `expected_pcrs[]` entry to the live PCR. Currently fail-opens on the empty PCR list per the [attestation-manifest.md contract](https://github.com/aegis-boot/aegis-boot/blob/main/docs/attestation-manifest.md). | qemu + ovmf + swtpm + TPM-bearing persona + signed stick flashed with `MKUSB_TEST_MODE=manifest-roundtrip` (aegis-boot [#677](https://github.com/aegis-boot/aegis-boot/issues/677) + [#697](https://github.com/aegis-boot/aegis-boot/pull/697)) | Skipped on default-flashed sticks; Pass on test-mode-flashed sticks |
 
-E5 (`kexec-refuses-unsigned` + `mok-enroll-alpine`) ships harness-side complete. Both currently `SKIP` against the existing aegis-boot stick — converting Skip → Pass requires the cross-repo companions tracked at [aegis-boot#675](https://github.com/aegis-boot/aegis-boot/issues/675) and [aegis-boot#676](https://github.com/aegis-boot/aegis-boot/issues/676). E6 (attestation) remains blocked on [aegis-boot#677](https://github.com/aegis-boot/aegis-boot/issues/677) (manifest contract).
+#### Producing a Pass on E5/E6 scenarios
+
+The four cross-repo-coordinated scenarios (`kexec-refuses-unsigned`, `mok-enroll-alpine`, `attestation-roundtrip`) all rely on the same trigger: an `aegis.test=<name>` parameter on the kernel cmdline. aegis-boot's [`MKUSB_TEST_MODE`](https://github.com/aegis-boot/aegis-boot/pull/696) env var bakes this into the flashed stick's `grub.cfg`:
+
+```bash
+# In aegis-boot's checkout:
+MKUSB_TEST_MODE=kexec-unsigned    ./scripts/mkusb.sh /dev/sdX  # E5.3
+MKUSB_TEST_MODE=mok-enroll        ./scripts/mkusb.sh /dev/sdX  # E5.4
+MKUSB_TEST_MODE=manifest-roundtrip ./scripts/mkusb.sh /dev/sdX  # E6
+```
+
+Then run the harness against the resulting stick image:
+
+```bash
+target/release/aegis-hwsim run \
+  lenovo-thinkpad-x1-carbon-gen11 \
+  attestation-roundtrip \
+  /path/to/aegis-boot-with-test-mode.img
+```
 
 Adding a scenario? See [docs/scenario-authoring.md](docs/scenario-authoring.md). Adding a persona? See [docs/persona-authoring.md](docs/persona-authoring.md). Either way, start with [CONTRIBUTING.md](CONTRIBUTING.md).
 
