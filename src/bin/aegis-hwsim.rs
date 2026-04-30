@@ -102,16 +102,37 @@ fn print_help() {
     println!("  aegis-hwsim --version               Print version");
     println!("  aegis-hwsim --help                  This message");
     println!();
-    println!("All paths resolve against the current working directory. Run from the");
-    println!("repo root (or the directory containing personas/ and firmware/).");
+    println!("GLOBAL FLAGS (accepted by every persona-loading subcommand):");
+    println!("  --personas-dir DIR    Override the persona library path");
+    println!("                        (default: ./personas relative to cwd)");
+    println!("  --firmware-root DIR   Override the firmware root used for");
+    println!("                        custom_keyring resolution");
+    println!("                        (default: ./firmware relative to cwd)");
+    println!();
+    println!("`cargo install`-ed users: pass `--personas-dir <repo>/personas`");
+    println!("(clone https://github.com/williamzujkowski/aegis-hwsim) since the");
+    println!("crates.io binary doesn't ship persona fixtures by design.");
 }
 
-/// Shared helper — resolves the cwd-relative `LoadOptions` and calls into
-/// the loader. Returns the personas on success or prints the error to
-/// stderr and returns the appropriate `ExitCode`.
-fn load_or_report() -> Result<Vec<Persona>, ExitCode> {
+/// Shared helper — resolves the cwd-relative `LoadOptions`, applies any
+/// `--personas-dir` / `--firmware-root` overrides from `args`, and
+/// calls into the loader. Returns the personas on success or prints
+/// the error to stderr and returns the appropriate `ExitCode`.
+///
+/// Without overrides this matches the original behavior: `personas/`
+/// and `firmware/` resolved against cwd (so a developer running from
+/// the repo root just works). With `--personas-dir <DIR>` the binary
+/// becomes useful from any cwd — important now that v0.1.0 ships
+/// via `cargo install`, where the operator's cwd is not the repo.
+fn load_or_report(args: &[String]) -> Result<Vec<Persona>, ExitCode> {
     let cwd = cwd_or_exit()?;
-    let opts = LoadOptions::default_at(&cwd);
+    let mut opts = LoadOptions::default_at(&cwd);
+    if let Some(p) = flag_value(args, "--personas-dir") {
+        opts.personas_dir = PathBuf::from(p);
+    }
+    if let Some(p) = flag_value(args, "--firmware-root") {
+        opts.firmware_root = PathBuf::from(p);
+    }
     match load_all(&opts) {
         Ok(personas) => Ok(personas),
         Err(e) => {
@@ -134,7 +155,7 @@ fn run_validate(args: &[String]) -> ExitCode {
         return ExitCode::SUCCESS;
     }
     let quiet = args.iter().any(|a| a == "--quiet");
-    match load_or_report() {
+    match load_or_report(args) {
         Ok(personas) => {
             if !quiet {
                 for p in &personas {
@@ -163,7 +184,7 @@ fn run_list(args: &[String]) -> ExitCode {
         return ExitCode::SUCCESS;
     }
     let json_mode = args.iter().any(|a| a == "--json");
-    match load_or_report() {
+    match load_or_report(args) {
         Ok(personas) => {
             if json_mode {
                 print_list_json(&personas);
@@ -386,7 +407,7 @@ fn run_coverage_grid(args: &[String]) -> ExitCode {
 
     let firmware_root = flag_path_or(args, "--firmware-root", "/usr/share/OVMF");
 
-    let personas = match load_or_report() {
+    let personas = match load_or_report(args) {
         Ok(p) => p,
         Err(code) => return code,
     };
@@ -562,7 +583,7 @@ fn run_scenario(args: &[String]) -> ExitCode {
         work_dir,
     } = parsed;
 
-    let personas = match load_or_report() {
+    let personas = match load_or_report(args) {
         Ok(p) => p,
         Err(code) => return code,
     };

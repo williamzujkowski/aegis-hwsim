@@ -67,6 +67,27 @@ See [aegis-boot#51](https://github.com/williamzujkowski/aegis-boot/issues/51), [
 
 ## Quick start
 
+### From crates.io
+
+```bash
+cargo install aegis-hwsim                         # Installs the orchestrator binary
+
+# Persona fixtures + firmware/test-keyring don't ship in the cargo
+# package by design. Clone the repo for the YAML library and pass
+# its paths via the global flags:
+git clone https://github.com/williamzujkowski/aegis-hwsim /tmp/aegis-hwsim
+
+# Smoke-test the install
+aegis-hwsim --version --json
+aegis-hwsim list-personas \
+    --personas-dir /tmp/aegis-hwsim/personas \
+    --firmware-root /tmp/aegis-hwsim/firmware
+```
+
+`--personas-dir` and `--firmware-root` are accepted by every persona-loading subcommand. Default behavior (no flags) resolves both relative to cwd — that's the in-repo developer flow below.
+
+### From a checkout (the harness's own dev flow)
+
 ```bash
 git clone https://github.com/williamzujkowski/aegis-hwsim
 cd aegis-hwsim

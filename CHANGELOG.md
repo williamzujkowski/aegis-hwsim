@@ -4,6 +4,14 @@ All notable changes to aegis-hwsim. Mirrors the [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-04-30
+
+UX patch for cargo-installed users.
+
+### Fixed
+
+- **`cargo install aegis-hwsim` now works from any cwd.** v0.1.0 surfaced a UX papercut: the binary always resolved `personas/` relative to cwd, so a `cargo install`-ed binary outside a checkout failed with `read "/some/cwd/personas": No such file or directory`. v0.1.1 adds a `--personas-dir DIR` global flag (and matching `--firmware-root DIR`) accepted by every persona-loading subcommand. Default behavior unchanged for in-repo runs. Help text updated to call out the cargo-installed flow + point at the github repo for fetching persona fixtures.
+
 ## [0.1.0] — 2026-04-30
 
 First crates.io publish. Closes E5 (MOK + unsigned-kexec) and E6 (attestation roundtrip) structurally; partially closes E7 (v1.0 release gate — the trusted-publishing pipeline now publishes a real release). Five scenarios shipped, ~150 tests, CodeQL clean, full release-readiness gate (audit + `cargo publish --dry-run`) on every CI run.
