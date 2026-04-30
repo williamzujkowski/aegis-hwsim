@@ -27,7 +27,7 @@ jobs:
     # variants), the CLAUDE.md non-negotiable max-parallel: 4 lives
     # here — `strategy: { matrix: ..., max-parallel: 4 }`.
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
       - name: Install Rust
         run: |
           rustup toolchain install 1.85.0 --profile minimal --component clippy,rustfmt
@@ -69,7 +69,7 @@ jobs:
           cargo run --locked -q --bin aegis-hwsim -- coverage-grid > artifacts/coverage-grid.md
           cargo run --locked -q --bin aegis-hwsim -- coverage-grid --format json > artifacts/coverage-grid.json
       - name: Upload coverage-grid artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: coverage-grid
           path: artifacts/coverage-grid.*
