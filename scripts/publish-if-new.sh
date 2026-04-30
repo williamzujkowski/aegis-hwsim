@@ -38,27 +38,39 @@ if [[ -z "$CRATE" ]]; then
     exit 2
 fi
 
-# Workspace version: prefer explicit env (CI sets this) so we don't
-# have to re-parse Cargo.toml inside a runner where awk + grep can
-# get tripped by inline comments.
+# Crate version: prefer explicit env (CI can set it) so we don't have
+# to re-parse Cargo.toml inside a runner where awk + grep can get
+# tripped by inline comments.
+#
+# This script started life mirroring aegis-boot's wrapper, which is a
+# workspace and exposes its version via `[workspace.package].version`.
+# aegis-hwsim is a single-crate project with `[package].version`.
+# Walk both sections so the script works on either shape — the first
+# version it finds wins, with `[package]` checked first because that's
+# the single-crate idiom.
 if [[ -z "${WORKSPACE_VERSION:-}" ]]; then
     SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
     REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-    WORKSPACE_VERSION="$(
-        awk '
-            /^\[workspace\.package\]/ { f=1; next }
-            f && /^\[/                 { exit }
-            f && /^version = /         {
-                gsub(/^version = "|"$/, "", $0)
-                print
-                exit
-            }
-        ' "$REPO_ROOT/Cargo.toml"
-    )"
+    for SECTION in "package" "workspace.package"; do
+        WORKSPACE_VERSION="$(
+            awk -v section="[${SECTION}]" '
+                $0 == section            { f=1; next }
+                f && /^\[/               { exit }
+                f && /^version = /       {
+                    gsub(/^version = "|"$/, "", $0)
+                    print
+                    exit
+                }
+            ' "$REPO_ROOT/Cargo.toml"
+        )"
+        [[ -n "$WORKSPACE_VERSION" ]] && break
+    done
 fi
 
 if [[ -z "$WORKSPACE_VERSION" ]]; then
-    echo "publish-if-new: ERROR — could not parse workspace version" >&2
+    echo "publish-if-new: ERROR — could not parse crate version from Cargo.toml" >&2
+    echo "publish-if-new:   tried [package] and [workspace.package] sections" >&2
+    echo "publish-if-new:   set WORKSPACE_VERSION env var to override" >&2
     exit 2
 fi
 
