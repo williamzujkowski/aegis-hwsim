@@ -1,16 +1,13 @@
 # aegis-hwsim
 
+[![crates.io](https://img.shields.io/crates/v/aegis-hwsim.svg)](https://crates.io/crates/aegis-hwsim)
+[![docs.rs](https://img.shields.io/docsrs/aegis-hwsim)](https://docs.rs/aegis-hwsim)
 [![CI](https://github.com/williamzujkowski/aegis-hwsim/actions/workflows/ci.yml/badge.svg)](https://github.com/williamzujkowski/aegis-hwsim/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/williamzujkowski/aegis-hwsim/actions/workflows/codeql.yml/badge.svg)](https://github.com/williamzujkowski/aegis-hwsim/actions/workflows/codeql.yml)
 [![MSRV](https://img.shields.io/badge/MSRV-1.85-blue)](./Cargo.toml)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](./LICENSE-MIT)
 
-<!-- crates.io + docs.rs badges pending first `cargo publish` (tracked: E7 #7).
-     The release pipeline (`.github/workflows/crates-publish.yml`) is wired
-     and exercises a `cargo publish --dry-run`-equivalent on every CI run via
-     the `cargo-package-dry-run` step in ci.yml. -->
-
-**Status:** Phase 2 + E5 (MOK + unsigned-kexec) + E6 attestation roundtrip structurally complete (v0.0.2, 2026-04-29) — 11 personas covering all 4 OVMF variants and all 3 TPM versions, 5 scenarios (`qemu-boots-ovmf` smoke + `signed-boot-ubuntu` end-to-end + `kexec-refuses-unsigned` + `mok-enroll-alpine` + `attestation-roundtrip`), coverage-grid artifact per PR, ~150 tests including 60k-input fuzz per CI run, CodeQL static analysis enabled. Tracks [aegis-boot#226](https://github.com/williamzujkowski/aegis-boot/issues/226); next phases tracked in [#5](https://github.com/williamzujkowski/aegis-hwsim/issues/5) / [#6](https://github.com/williamzujkowski/aegis-hwsim/issues/6) / [#7](https://github.com/williamzujkowski/aegis-hwsim/issues/7).
+**Status:** v0.1.0 published to crates.io (2026-04-30). E5 (MOK + unsigned-kexec) and E6 (attestation roundtrip) structurally complete. 11 personas covering all 4 OVMF variants and all 3 TPM versions, 5 scenarios (`qemu-boots-ovmf` smoke + `signed-boot-ubuntu` end-to-end + `kexec-refuses-unsigned` + `mok-enroll-alpine` + `attestation-roundtrip`), coverage-grid artifact per PR, ~150 tests including 60k-input fuzz per CI run, CodeQL static analysis enabled, all GitHub Actions SHA-pinned, Trusted Publishing pipeline operational. Tracks [aegis-boot#226](https://github.com/williamzujkowski/aegis-boot/issues/226); v1.0 release gate tracked in [#7](https://github.com/williamzujkowski/aegis-hwsim/issues/7) (real-hardware comparison study pending).
 
 A test harness that parameterizes **QEMU + OVMF + swtpm** over a matrix of **hardware personas** — YAML fixtures matching real shipping laptops/workstations — so [aegis-boot](https://github.com/williamzujkowski/aegis-boot)'s UEFI-Secure-Boot-preserving USB-rescue-stick flow can be validated across ~100 configurations without waiting on physical Framework / ThinkPad / Dell / HP / ASUS hardware.
 
